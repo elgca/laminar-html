@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ScalaCompilerConfiguration">
+    <option name="separateProdTestSources" value="true" />
+    <profile name="sbt 1" modules="root,root.main,root.scalajs-html,root.test,scalajs-html,scalajs-html.main,scalajs-html.test" />
+    <profile name="sbt 2" modules="root.scalajs-html.main,root.scalajs-html.test">
+      <option name="implicitConversions" value="true" />
+      <option name="deprecationWarnings" value="true" />
+      <option name="featureWarnings" value="true" />
+      <parameters>
+        <parameter value="-scalajs" />
+        <parameter value="-encoding" />
+        <parameter value="UTF-8" />
+        <parameter value="-language:_" />
+        <parameter value="-new-syntax" />
+        <parameter value="-explain" />
+        <parameter value="-Ysafe-init" />
+        <parameter value="-Yexplicit-nulls" />
+        <parameter value="-rewrite" />
+        <parameter value="-source:3.7" />
+      </parameters>
+    </profile>
+  </component>
+</project>
