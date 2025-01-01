@@ -88,7 +88,7 @@ import org.scalajs.dom
         placeholder ="Enter zip code: "
         class ="input input-primary"
         value = {zipVar}
-        input = {(e: dom.InputEvent) => zipVar.set(e.data.filter(_ != 'a'))}
+        input = {(e: String) => zipVar.set(e.data.filter(_ != 'a'))}
       />
       <button click={() => switch.set(!switch.now())}>Change</button>
       {switchElement}
@@ -98,3 +98,16 @@ import org.scalajs.dom
   val _ = render(dom.document.getElementById("app"), app)
 }
 ```
+
+## 事件函数
+
+事件通过`element.addEventListener`绑定, 提供下列函数支持:
+
+- `() => Unit`
+- `(e: Ev <: dom.Event) => Unit`
+- `(value:String) => Unit`
+  - 等效于 `(e: dom.Event) => f(e.target.value.getOrElse(""))`
+- `(checked:Boolean) => Unit`
+  - 等效于 `(e: dom.Event) => f(e.target.checked.getOrElse(false))`
+- `(files:List[dom.File]) => Unit`
+  - 等效于 `(e: dom.Event) => f(e.target.files.getOrElse(List.empty))`
