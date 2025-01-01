@@ -11,6 +11,8 @@
 - 支持Airstream中所有的反应式变量
 - 你可以把xhtml嵌入到Laminar的节点中或者把Laminar的节点嵌入到xhtml中
 
+示例1:
+
 ```scala
 val xmlElem = {
   val count = Var(0)
@@ -41,4 +43,54 @@ val laminarElem = {
 }
 
 L.renderOnDomContentLoaded(document.getElementById("app"), laminarElem)
+```
+
+示例2
+
+```scala
+import com.raquo.laminar.api.L.*
+import org.scalajs.dom
+
+@main def hello = {
+  def onTrue        = {
+    println("创建了新的onTrue")
+    <div>
+      <h1>这是True</h1>
+      {
+        onMountUnmountCallback(
+          mount = { _ => println("mounted:这是True") },
+          unmount = { _ => println("unmounted:这是True") })
+      }
+    </div>
+  }
+  def onFalse       = {
+    println("创建了新的onFalse")
+    <div>
+      <h1>这是False</h1>
+      {
+        onMountUnmountCallback(
+          mount = { _ => println("mounted:这是False") },
+          unmount = { _ => println("unmounted:这是False") })
+      }
+    </div>
+  }
+  val switch        = Var(true)
+  val switchElement = switch.signal.map(if (_) onTrue else onFalse)
+  val zipVar        = Var("")
+
+  val app = {
+    <div>
+      <input
+        placeholder ="Enter zip code: "
+        class ="input input-primary"
+        value = {zipVar}
+        input = {(e: dom.InputEvent) => zipVar.set(e.data.filter(_ != 'a'))}
+      />
+      <button click={() => switch.set(!switch.now())}>Change</button>
+      {switchElement}
+    </div>
+  }
+
+  val _ = render(dom.document.getElementById("app"), app)
+}
 ```

@@ -1,3 +1,5 @@
+import xerial.sbt.Sonatype.sonatypeCentralHost
+
 val commonScalacOptions = Seq(
   "-deprecation",
   "-encoding",
@@ -24,17 +26,7 @@ lazy val jsSettings = Seq(
 )
 
 def buildinfo_settings(pkg: String) =
-  Seq(
-//    buildInfoKeys    := Seq[BuildInfoKey](
-//      name,
-//      version,
-//      scalaVersion,
-//      sbtVersion,
-//      isSnapshot,
-//    ),
-//    buildInfoObject  := "BuildInfo",
-//    buildInfoPackage := pkg,
-  )
+  Seq()
 
 lazy val compilerSettings = Seq(
   // not sure what this does anymore so removed it
@@ -46,19 +38,37 @@ lazy val compilerSettings = Seq(
 
 lazy val resolverSettings = Seq(resolvers ++= Seq())
 
-lazy val publishSettings = Seq()
+inThisBuild(
+  List(
+    scalaVersion           := "3.5.2",
+    startYear              := Some(2024),
+    organization           := "io.github.elgca",
+    sonatypeCredentialHost := sonatypeCentralHost,
+  ),
+)
+
+lazy val publishSettings = Seq(
+  licenses   := Seq(("MIT", url("http://opensource.org/licenses/MIT"))),
+  homepage   := Some(url("https://github.com/elgca/laminar-html")),
+  developers := List(
+    Developer(
+      "elgca",
+      "kewenchao",
+      "modtekent@live.com",
+      url("https://github.com/elgca"),
+    ),
+  ),
+  publishTo  := sonatypePublishTo.value,
+)
 
 def std_settings(p: String, d: String) =
   Seq(
-    name         := p,
-    organization := "io.github.elgca",
-    description  := d,
+    name        := p,
+    description := d,
     libraryDependencies ++= Seq(
       // "org.scalatest" %%% "scalatest" % "3.2.0-M2" % Test
     ),
   ) ++ resolverSettings ++ compilerSettings ++ jsSettings ++ publishSettings
-
-inThisBuild(List(scalaVersion := "3.5.2", startYear := Some(2024)))
 
 lazy val root = (project in file("."))
   .settings(publish / skip := true)
