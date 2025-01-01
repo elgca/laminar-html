@@ -4,27 +4,18 @@ ThisBuild / sonatypeCredentialHost := sonatypeCentralHost
 
 ThisBuild / organization         := "io.github.elgca"
 ThisBuild / organizationName     := "elgca"
-ThisBuild / organizationHomepage := Some(url("http://example.com/"))
+ThisBuild / organizationHomepage := Some(url("https://github.com/elgca"))
 ThisBuild / versionScheme        := Some("early-semver")
 ThisBuild / scmInfo              := Some(
   ScmInfo(
-    url("https://github.com/your-account/your-project"),
-    "scm:git@github.com:your-account/your-project.git",
+    url("https://github.com/elgca/laminar-html"),
+    "scm:git@github.com:elgca/laminar-html.git",
   ),
 )
+ThisBuild / description          := "elgca"
+ThisBuild / licenses             := Seq(("MIT", url("http://opensource.org/licenses/MIT")))
+ThisBuild / homepage             := Some(url("https://github.com/elgca/laminar-html"))
 ThisBuild / developers           := List(
-  Developer(
-    id = "Your identifier",
-    name = "Your Name",
-    email = "your@email",
-    url = url("http://your.url"),
-  ),
-)
-
-ThisBuild / description := "elgca"
-ThisBuild / licenses    := Seq(("MIT", url("http://opensource.org/licenses/MIT")))
-ThisBuild / homepage    := Some(url("https://github.com/elgca/laminar-html"))
-ThisBuild / developers  := List(
   Developer(
     "elgca",
     "kewenchao",
