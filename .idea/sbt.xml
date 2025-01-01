@@ -10,13 +10,14 @@
         <option name="modules">
           <set>
             <option value="$PROJECT_DIR$" />
+            <option value="$PROJECT_DIR$/laminar-html" />
             <option value="$PROJECT_DIR$/project" />
-            <option value="$PROJECT_DIR$/scalajs-html" />
           </set>
         </option>
         <option name="resolveSbtClassifiers" value="true" />
         <option name="sbtVersion" value="1.10.7" />
         <option name="separateProdAndTestSources" value="true" />
+        <option name="useSbtShellForImport" value="true" />
       </SbtProjectSettings>
     </option>
   </component>
