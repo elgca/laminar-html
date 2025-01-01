@@ -6,6 +6,10 @@
 
 # 使用
 
+```scala
+"io.github.elgca" %%% "laminar-html" % "0.1.3"
+```
+
 - 所有的节点都是Laminar的ReactiveElement.Base所以具备跟Laminar的完全互操作性.
 - 可以使用Laminar中所有的属性、事件和子节点, 例如: `<button> {L.onClick --> count.update(_ + 1)} </button>`
 - 支持Airstream中所有的反应式变量
