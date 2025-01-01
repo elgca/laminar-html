@@ -1,9 +1,6 @@
 package scala.xml
 
 import com.raquo.airstream.core.Source
-import com.raquo.laminar.api.L
-import com.raquo.laminar.modifiers.{RenderableNode, RenderableSeq}
-
 import scala.collection.immutable.Seq
 import scala.collection.{mutable, Iterator}
 
@@ -40,6 +37,12 @@ class NodeBuffer extends Seq[Node] {
 
   // 忽略空节点
   def &+(o: scala.Null | Unit): NodeBuffer = { this }
+
+  // 兼容Laminar，我想把Elem继承ReactiveElementBase,但是失败了,无法完全应用Laminar属性
+  def &+(o: Elem): NodeBuffer = {
+    underlying.addOne(o.reactiveElement)
+    this
+  }
 
   def &+(o: AnyNode): NodeBuffer = {
     underlying.addOne(o.asInstanceOf[Node])

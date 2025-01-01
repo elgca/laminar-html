@@ -1,11 +1,11 @@
 package scala.xml
 
 import com.raquo.airstream.core.Source
-import com.raquo.laminar.modifiers.{EventListener, Modifier}
-import com.raquo.laminar.nodes.ReactiveElement
 import org.scalajs.dom
 
 import scala.annotation.{implicitNotFound, tailrec}
+import scala.collection.immutable.{List, Nil}
+import scala.scalajs.js
 
 trait MetaData {
 
@@ -22,7 +22,7 @@ trait MetaData {
 
   def next: MetaData
 
-  def apply(namespaceBinding: NamespaceBinding, element: Elem): Unit = {}
+  def apply(namespaceBinding: NamespaceBinding, element: ReactiveElementBase): Unit = {}
 
 }
 
@@ -36,7 +36,7 @@ class UnprefixedAttribute[V: AttributeBinder](
   val next: MetaData,
 ) extends MetaData {
 
-  override def apply(namespaceBinding: NamespaceBinding, element: Elem): Unit = {
+  override def apply(namespaceBinding: NamespaceBinding, element: ReactiveElementBase): Unit = {
     summon[AttributeBinder[V]].bindAttr(element, None, key, value)
   }
 }
@@ -48,7 +48,7 @@ class PrefixedAttribute[V: AttributeBinder](
   val next: MetaData,
 ) extends MetaData {
 
-  override def apply(namespaceBinding: NamespaceBinding, element: Elem): Unit = {
+  override def apply(namespaceBinding: NamespaceBinding, element: ReactiveElementBase): Unit = {
     summon[AttributeBinder[V]].bindAttr(
       element,
       namespaceBinding.namespaceURI(prefix),
@@ -66,7 +66,7 @@ class PrefixedAttribute[V: AttributeBinder](
   - Option[String,Boolean]
   """)
 trait AttributeBinder[T] {
-  def bindAttr(element: Elem, namespaceURI: Option[String], key: String, value: T): Unit
+  def bindAttr(element: ReactiveElementBase, namespaceURI: Option[String], key: String, value: T): Unit
 }
 
 object AttributeBinder {
@@ -84,11 +84,28 @@ object AttributeBinder {
 
   object AttrValue {
 
-    def removeAttr(node: dom.Element, ns: Option[String], key: String): Unit =
+    def removeAttr(node: dom.Element, ns: Option[String], key: String): Unit = {
       ns.fold(node.removeAttribute(key))(ns => node.removeAttributeNS(ns, key))
+    }
 
-    given SetAttr: AttrValue[String] = (node, ns, key, value) =>
-      ns.fold(node.setAttribute(key, value))(ns => node.setAttributeNS(ns, key, value))
+    def setAttribute(node: dom.Element, ns: Option[String], key: String, value: String): Unit = {
+      ns.fold {
+        if Props.props.contains(key) then setProperty(node, ns, key, value)
+        else node.setAttribute(key, value)
+      } { ns =>
+        node.setAttributeNS(ns, key, value)
+      }
+    }
+
+    def setProperty[DomV](node: dom.Element, ns: Option[String], key: String, value: DomV): Unit = {
+      node.asInstanceOf[js.Dynamic].updateDynamic(key)(value.asInstanceOf[js.Any])
+    }
+
+    def getProperty[DomV](node: dom.Element, key: String): js.UndefOr[DomV] = {
+      node.asInstanceOf[js.Dynamic].selectDynamic(key).asInstanceOf[js.UndefOr[DomV]]
+    }
+
+    given SetAttr: AttrValue[String] = (node, ns, key, value) => setAttribute(node, ns, key, value)
 
     given BoolSetter: AttrValue[Boolean] = (node, ns, key, value) =>
       if value then SetAttr(node, ns, key, "") else removeAttr(node, ns, key)
@@ -118,8 +135,14 @@ object AttributeBinder {
 
   given SourceBinder[T, S[x] <: Source[x]](using setter: AttrValue[T]): AttributeBinder[S[T]] = {
     (element, namespaceURI, key, value) =>
+      val updater: (dom.Element, Option[String], String, T) => Unit =
+        if key == "value" && namespaceURI.isEmpty then
+          (e: dom.Element, ns: Option[String], key: String, nextValue: T) =>
+            if !AttrValue.getProperty(e, key).contains(nextValue) then AttrValue.setProperty(e, ns, key, nextValue)
+        else if namespaceURI.isEmpty && Props.props.contains(key) then AttrValue.setProperty
+        else setter
       ReactiveElement.bindFn(element, value.toObservable) { nextValue =>
-        setter(element.ref, namespaceURI, key, nextValue)
+        updater(element.ref, namespaceURI, key, nextValue)
       }
   }
 
@@ -131,12 +154,42 @@ object AttributeBinder {
     element.ref.addEventListener(key, (ev: Event) => fun(ev))
   }
 
-  given EventListenerBinder[Ev <: dom.Event, Out]: AttributeBinder[EventListener[Ev, Out]] = {
-    (element, namespaceURI, key, listener) =>
-      listener.apply(element)
+  given FunValueBinder: AttributeBinder[String => Unit] = { (element, namespaceURI, key, fun) =>
+    element.ref.addEventListener(
+      key,
+      (ev: dom.Event) => fun(DomApi.getValue(ev.target.asInstanceOf[dom.Element]).getOrElse("")))
   }
 
-  given htmlModBinder[Ref <: Modifier.Base]: AttributeBinder[Ref] = { (element, namespaceURI, key, mod) =>
+  given FunCheckedBinder: AttributeBinder[Boolean => Unit] = { (element, namespaceURI, key, fun) =>
+    element.ref.addEventListener(
+      key,
+      (ev: dom.Event) => fun(DomApi.getChecked(ev.target.asInstanceOf[dom.Element]).getOrElse(false)))
+  }
+
+  given FunFilesBinder: AttributeBinder[List[dom.File] => Unit] = { (element, namespaceURI, key, fun) =>
+    element.ref.addEventListener(
+      key,
+      (ev: dom.Event) =>
+        fun {
+          DomApi.getFiles(ev.target.asInstanceOf[dom.Element]).getOrElse(Nil)
+        })
+  }
+
+  given FunTargetBinder[Ref <: dom.EventTarget]: AttributeBinder[Ref => Unit] = { (element, namespaceURI, key, fun) =>
+    element.ref.addEventListener(
+      key,
+      (ev: dom.Event) =>
+        fun {
+          ev.target.asInstanceOf[Ref]
+        })
+  }
+//
+//  given EventListenerBinder[Ev <: dom.Event, Out]: AttributeBinder[EventListener[Ev, Out]] = {
+//    (element, namespaceURI, key, listener) =>
+//      listener.apply(element)
+//  }
+
+  given htmlModBinder[Ref <: Node]: AttributeBinder[Ref] = { (element, namespaceURI, key, mod) =>
     mod.apply(element)
   }
 }

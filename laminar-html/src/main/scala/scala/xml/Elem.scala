@@ -1,20 +1,20 @@
 package scala.xml
 
-import com.raquo.laminar.tags.Tag
+import com.raquo.laminar.tags.{HtmlTag, SvgTag, Tag}
 import org.scalajs.dom
-
-import scala.xml.Elem.ElemTag
+import org.scalajs.dom.svg.Element
 
 class Elem(
-  override val tag: ElemTag,
-  override val ref: dom.Element,
-) extends ElementNodeBase derives CanEqual {
+  val reactiveElement: ReactiveElementBase,
+  //  override val tag: ElemTag,
+  //  override val ref: dom.Element,
+) derives CanEqual {
   def this(
-    tagName: ElemTag,
+    tagName: String,
     prefix: String | scala.Null,
     scope: NamespaceBinding,
   ) = {
-    this(tagName, Elem.createElement(tagName, prefix, scope))
+    this(Elem.createReactiveElement(tagName, prefix, scope))
   }
 
   def this(
@@ -25,14 +25,19 @@ class Elem(
     minimizeEmpty: Boolean,
     child: Node*,
   ) = {
-    this(ElemTag(tagName), prefix, scope)
-    attributes.foreach(attrSetter => attrSetter(scope, this))
-    child.foreach(child => child.apply(this))
+    this(tagName, prefix, scope)
+    attributes.foreach(attrSetter => attrSetter(scope, reactiveElement))
+    child.foreach(child => child.apply(reactiveElement))
   }
 
 }
 
 object Elem {
+
+  inline given Conversion[Elem, ReactiveElementBase] with
+    inline def apply(elem: Elem): ReactiveElementBase = elem.reactiveElement
+
+  given int: RenderableNode[Elem] = RenderableNode(x => x.reactiveElement)
 
   class ElemTag(
     val name: String,
@@ -41,9 +46,30 @@ object Elem {
     override def jsTagName: String = name
   }
 
-  def createElement(tagName: ElemTag, prefix: String | scala.Null, scope: NamespaceBinding): dom.Element = {
+  def createElement(tagName: String, prefix: String | scala.Null, scope: NamespaceBinding): dom.Element = {
     scope.namespaceURI(prefix) match
-      case Some(ns) => dom.document.createElementNS(ns, tagName.name)
-      case None     => dom.document.createElement(tagName.name)
+      case Some(ns) => dom.document.createElementNS(ns, tagName)
+      case None     => dom.document.createElement(tagName)
+  }
+
+  def createReactiveElement(
+    tagName: String,
+    prefix: String | scala.Null,
+    scope: NamespaceBinding): ReactiveElementBase = {
+    scope.namespaceURI(prefix) match
+      case Some(ns) if ns == TopScope.svgNamespaceUri =>
+        new ReactiveSvgElement(
+          new SvgTag(tagName),
+          dom.document.createElementNS(ns, tagName).asInstanceOf[dom.svg.Element],
+        )
+      case Some(ns)                                   =>
+        new ReactiveHtmlElement(
+          new HtmlTag(tagName),
+          dom.document.createElementNS(ns, tagName).asInstanceOf[dom.html.Element],
+        )
+      case None                                       =>
+        new ReactiveHtmlElement(
+          new HtmlTag(tagName),
+          dom.document.createElement(tagName).asInstanceOf[dom.html.Element])
   }
 }
