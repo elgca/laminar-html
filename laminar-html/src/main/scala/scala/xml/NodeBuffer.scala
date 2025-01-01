@@ -1,5 +1,9 @@
 package scala.xml
 
+import com.raquo.airstream.core.Source
+import com.raquo.laminar.api.L
+import com.raquo.laminar.modifiers.{RenderableNode, RenderableSeq}
+
 import scala.collection.immutable.Seq
 import scala.collection.{mutable, Iterator}
 
@@ -22,6 +26,18 @@ class NodeBuffer extends Seq[Node] {
   @annotation.targetName("trimText")
   inline def &+(inline text: Text): NodeBuffer = { MacrosTool.trimOrDropTextNode(text, this) }
 
+  @annotation.targetName("addChild")
+  def &+[Component: RenderableNode](source: Source[Component]): NodeBuffer = {
+    &+(L.child <-- source)
+  }
+
+  @annotation.targetName("addChildren")
+  def &+[Collection[_]: RenderableSeq, Component: RenderableNode](
+    source: Source[Collection[Component]],
+  ): NodeBuffer = {
+    &+(L.children <-- source)
+  }
+
   // 忽略空节点
   def &+(o: scala.Null | Unit): NodeBuffer = { this }
 
@@ -29,4 +45,11 @@ class NodeBuffer extends Seq[Node] {
     underlying.addOne(o.asInstanceOf[Node])
     this
   }
+}
+
+object RenderableNodeImplicit {
+  given int: RenderableNode[Int]         = RenderableNode(x => new TextNode(x.toString))
+  given string: RenderableNode[String]   = RenderableNode(x => new TextNode(x.toString))
+  given double: RenderableNode[Double]   = RenderableNode(x => new TextNode(x.toString))
+  given boolean: RenderableNode[Boolean] = RenderableNode(x => new TextNode(x.toString))
 }

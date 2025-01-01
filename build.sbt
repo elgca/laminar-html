@@ -50,8 +50,9 @@ lazy val publishSettings = Seq()
 
 def std_settings(p: String, d: String) =
   Seq(
-    name        := p,
-    description := d,
+    name         := p,
+    organization := "io.github.elgca",
+    description  := d,
     libraryDependencies ++= Seq(
       // "org.scalatest" %%% "scalatest" % "3.2.0-M2" % Test
     ),
@@ -64,6 +65,6 @@ lazy val root = (project in file("."))
   .aggregate(`laminar-html`)
 
 lazy val `laminar-html` = project
-  .settings(std_settings("laminar-html", "htmljs"))
+  .settings(std_settings("laminar-html", "laminar-html"))
   .settings(buildinfo_settings("html"))
   .enablePlugins(ScalaJSPlugin)
