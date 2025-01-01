@@ -16,7 +16,6 @@ lazy val jsSettings = Seq(
   scalaModuleInfo ~= (_.map(_.withOverrideScalaVersion(true))),
   libraryDependencies ++= Seq(
     "org.scala-js" %%% "scalajs-dom" % "2.8.0",
-    "com.raquo"    %%% "airstream"   % "17.2.0-M1",
     "com.raquo"    %%% "laminar"     % "17.2.0",
   ),
   // testing

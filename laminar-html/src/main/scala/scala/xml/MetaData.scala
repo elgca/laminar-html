@@ -13,8 +13,8 @@ trait MetaData {
     @tailrec
     def foreach0(m: MetaData): Unit =
       m match {
-        case Null =>
-        case any  => f(any); foreach0(m.next)
+        case scala.xml.Null =>
+        case any            => f(any); foreach0(m.next)
       }
 
     foreach0(this)
