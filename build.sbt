@@ -1,5 +1,3 @@
-import xerial.sbt.Sonatype.sonatypeCentralHost
-
 val commonScalacOptions = Seq(
   "-deprecation",
   "-encoding",
@@ -38,28 +36,9 @@ lazy val compilerSettings = Seq(
 
 lazy val resolverSettings = Seq(resolvers ++= Seq())
 
-inThisBuild(
-  List(
-    scalaVersion           := "3.5.2",
-    startYear              := Some(2024),
-    organization           := "io.github.elgca",
-    sonatypeCredentialHost := sonatypeCentralHost,
-  ),
-)
-
-lazy val publishSettings = Seq(
-  licenses   := Seq(("MIT", url("http://opensource.org/licenses/MIT"))),
-  homepage   := Some(url("https://github.com/elgca/laminar-html")),
-  developers := List(
-    Developer(
-      "elgca",
-      "kewenchao",
-      "modtekent@live.com",
-      url("https://github.com/elgca"),
-    ),
-  ),
-  publishTo  := sonatypePublishTo.value,
-)
+ThisBuild / scalaVersion := "3.5.2"
+ThisBuild / startYear    := Some(2024)
+ThisBuild / organization := "io.github.elgca"
 
 def std_settings(p: String, d: String) =
   Seq(
@@ -68,7 +47,7 @@ def std_settings(p: String, d: String) =
     libraryDependencies ++= Seq(
       // "org.scalatest" %%% "scalatest" % "3.2.0-M2" % Test
     ),
-  ) ++ resolverSettings ++ compilerSettings ++ jsSettings ++ publishSettings
+  ) ++ resolverSettings ++ compilerSettings ++ jsSettings
 
 lazy val root = (project in file("."))
   .settings(publish / skip := true)
