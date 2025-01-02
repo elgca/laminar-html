@@ -7,7 +7,7 @@
 # 使用
 
 ```scala
-"io.github.elgca" %%% "laminar-html" % "0.1.5"
+"io.github.elgca" %%% "laminar-html" % "0.1.6"
 ```
 
 - 所有的节点都是Laminar的ReactiveElement.Base所以具备跟Laminar的完全互操作性.
