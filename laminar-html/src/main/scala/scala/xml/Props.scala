@@ -7,6 +7,8 @@ object Props {
     *
     * [[https://stackoverflow.com/a/6004028/2601788]]
     */
+  inline def contains(inline key: String): Boolean = props.contains(key)
+
   val props = Set(
     "indeterminate",
     "checked",

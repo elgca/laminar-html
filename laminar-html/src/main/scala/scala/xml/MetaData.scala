@@ -105,7 +105,7 @@ object AttributeBinder {
 
     def setAttribute(node: dom.Element, ns: Option[String], key: String, value: String): Unit = {
       ns.fold {
-        if Props.props.contains(key) then setProperty(node, ns, key, value)
+        if Props.contains(key) then setProperty(node, ns, key, value)
         else node.setAttribute(key, value)
       } { ns =>
         node.setAttributeNS(ns, key, value)
@@ -154,7 +154,7 @@ object AttributeBinder {
         if key == "value" && namespaceURI.isEmpty then
           (e: dom.Element, ns: Option[String], key: String, nextValue: T) =>
             if !AttrValue.getProperty(e, key).contains(nextValue) then AttrValue.setProperty(e, ns, key, nextValue)
-        else if namespaceURI.isEmpty && Props.props.contains(key) then AttrValue.setProperty
+        else if namespaceURI.isEmpty && Props.contains(key) then AttrValue.setProperty
         else setter.apply
       ReactiveElement.bindFn(element, value.toObservable) { nextValue =>
         updater(element.ref, namespaceURI, key, nextValue)
@@ -162,11 +162,12 @@ object AttributeBinder {
   }
 
   // 事件注册
+  type JsListener = js.Function1[? <: dom.Event, Unit]
 
   private inline def addEventListener[Event <: dom.Event](
     element: dom.Element,
     key: String,
-    fun: Event => Unit,
+    fun: JsListener,
   ): Unit = {
     // 对于onclick这样的映射到click事件上
     element.addEventListener(Events.get(key), fun)
@@ -175,56 +176,48 @@ object AttributeBinder {
   private inline def removeEventListener[Event <: dom.Event](
     element: dom.Element,
     key: String,
-    fun: Event => Unit,
+    fun: JsListener,
   ): Unit = {
     // 对于onclick这样的映射到click事件上
     element.removeEventListener(Events.get(key), fun)
   }
 
-  given Fun0Binder: AttributeBinder[() => Unit] = { (element, namespaceURI, key, fun) =>
-    addEventListener(element.ref, key, (_: dom.Event) => fun())
+  @implicitNotFound(msg = """不支持的事件函数,未找到隐式的 ToJsListener[${T}]。
+  - 事件函数:
+    - `() => Unit`
+    - `(e: Ev <: dom.Event) => Unit`
+    - `(value:String) => Unit`
+      - 等效于 `(e: dom.Event) => f(e.target.value.getOrElse(""))`
+    - `(checked:Boolean) => Unit`
+      - 等效于 `(e: dom.Event) => f(e.target.checked.getOrElse(false))`
+    - `(files:List[dom.File]) => Unit`
+      - 等效于 `(e: dom.Event) => f(e.target.files.getOrElse(List.empty))`
+  """)
+  trait ToJsListener[T] {
+    def apply(fun: T): JsListener
   }
 
-  given Fun1Binder[Event <: dom.Event]: AttributeBinder[Event => Unit] = { (element, namespaceURI, key, fun) =>
-    addEventListener(element.ref, key, (ev: Event) => fun(ev))
+  object ToJsListener {
+    given unit: ToJsListener[() => Unit] = fun => (e: dom.Event) => fun()
+
+    given event[Event <: dom.Event]: ToJsListener[Event => Unit] = fun => fun
+
+    given str: ToJsListener[String => Unit] = fun => { (ev: dom.Event) =>
+      fun(DomApi.getValue(ev.target.asInstanceOf[dom.Element]).getOrElse(""))
+    }
+
+    given checked: ToJsListener[Boolean => Unit] = fun => { (ev: dom.Event) =>
+      fun(DomApi.getChecked(ev.target.asInstanceOf[dom.Element]).getOrElse(false))
+    }
+
+    given file: ToJsListener[List[dom.File] => Unit] = fun => { (ev: dom.Event) =>
+      fun(DomApi.getFiles(ev.target.asInstanceOf[dom.Element]).getOrElse(List.empty))
+    }
+
   }
 
-  given FunValueBinder: AttributeBinder[String => Unit] = { (element, namespaceURI, key, fun) =>
-    addEventListener(
-      element.ref,
-      key,
-      (ev: dom.Event) => fun(DomApi.getValue(ev.target.asInstanceOf[dom.Element]).getOrElse("")))
-  }
-
-  given FunCheckedBinder: AttributeBinder[Boolean => Unit] = { (element, namespaceURI, key, fun) =>
-    addEventListener(
-      element.ref,
-      key,
-      (ev: dom.Event) => fun(DomApi.getChecked(ev.target.asInstanceOf[dom.Element]).getOrElse(false)))
-  }
-
-  given FunFilesBinder: AttributeBinder[List[dom.File] => Unit] = { (element, namespaceURI, key, fun) =>
-    addEventListener(
-      element.ref,
-      key,
-      (ev: dom.Event) =>
-        fun {
-          DomApi.getFiles(ev.target.asInstanceOf[dom.Element]).getOrElse(Nil)
-        })
-  }
-
-  given FunTargetBinder[Ref <: dom.EventTarget]: AttributeBinder[Ref => Unit] = { (element, namespaceURI, key, fun) =>
-    addEventListener(
-      element.ref,
-      key,
-      (ev: dom.Event) =>
-        fun {
-          ev.target.asInstanceOf[Ref]
-        })
-  }
-
-  // 支持 Source[JsListener]这样通过Rx变量的监听,允许事件监听函数更新
-  type JsListener = js.Function1[? <: dom.Event, Unit]
+  given AddEventListenerBinder[T: ToJsListener]: AttributeBinder[T] = (element, namespaceURI, key, value) =>
+    addEventListener(element.ref, key, summon[ToJsListener[T]](value))
 
   def listenerObservableBinder(
     element: ReactiveElementBase,
@@ -245,52 +238,10 @@ object AttributeBinder {
     }
   }
 
-  given Fun0RxBinder[S[x] <: Source[x], T <: () => Unit]: AttributeBinder[S[T]] = { (element, namespaceURI, key, fun) =>
-    listenerObservableBinder(element, Events.get(key), fun.toObservable.map(f => ((_: dom.Event) => f()): JsListener))
-  }
-
-  given Fun1RxBinder[Event <: dom.Event, T <: Event => Unit, S[x] <: Source[x]]: AttributeBinder[S[T]] = {
-    (element, namespaceURI, key, fun) =>
-      listenerObservableBinder(element, Events.get(key), fun.toObservable.map(f => ((ev: Event) => f(ev)): JsListener))
-  }
-
-  given FunValueRxBinder[T <: String => Unit, S[x] <: Source[x]]: AttributeBinder[S[T]] = {
-    (element, namespaceURI, key, fun) =>
-      listenerObservableBinder(
-        element,
-        Events.get(key),
-        fun.toObservable.map(f =>
-          ((ev: dom.Event) => f(DomApi.getValue(ev.target.asInstanceOf[dom.Element]).getOrElse(""))): JsListener))
-  }
-
-  given FunCheckedRxBinder[T <: Boolean => Unit, S[x] <: Source[x]]: AttributeBinder[S[T]] = {
-    (element, namespaceURI, key, fun) =>
-      listenerObservableBinder(
-        element,
-        Events.get(key),
-        fun.toObservable.map(f =>
-          ((ev: dom.Event) => f(DomApi.getChecked(ev.target.asInstanceOf[dom.Element]).getOrElse(false))): JsListener),
-      )
-  }
-
-  given FunFilesRxBinder[T <: List[dom.File] => Unit, S[x] <: Source[x]]: AttributeBinder[S[T]] = {
-    (element, namespaceURI, key, fun) =>
-      listenerObservableBinder(
-        element,
-        Events.get(key),
-        fun.toObservable.map(f =>
-          ((ev: dom.Event) => f(DomApi.getFiles(ev.target.asInstanceOf[dom.Element]).getOrElse(Nil))): JsListener),
-      )
-  }
-
-  given FunTargetRxBinder[Ref <: dom.EventTarget, T <: Ref => Unit, S[x] <: Source[x]]: AttributeBinder[S[T]] = {
-    (element, namespaceURI, key, fun) =>
-      listenerObservableBinder(
-        element,
-        Events.get(key),
-        fun.toObservable.map(f => ((ev: dom.Event) => f(ev.target.asInstanceOf[Ref])): JsListener),
-      )
-  }
+  given RxEventListenerBinder[S[x] <: Source[x], T: ToJsListener]: AttributeBinder[S[T]] =
+    (element, namespaceURI, key, value) => {
+      listenerObservableBinder(element, key, value.toObservable.map(summon[ToJsListener[T]].apply))
+    }
 
   // Laminar Mod
 
