@@ -1,10 +1,10 @@
 # Laminar-html
 
-[English](readme_en.md)
+[中文](readme.md)
 
-为Laminar提供 XHTML 语法支持, 通过scala的xml字面量创建Laminar节点. 
+Provides XHTML syntax support for Laminar, creating Laminar nodes through Scala's XML literals.
 
-注意: 该库跟scala-xml是不兼容的
+Note: This library is incompatible with scala-xml
 
 # 使用
 
@@ -12,10 +12,10 @@
 "io.github.elgca" %%% "laminar-html" % "0.1.6"
 ```
 
-- 所有的节点都是Laminar的ReactiveElement.Base所以具备跟Laminar的完全互操作性.
-- 可以使用Laminar中所有的属性、事件和子节点, 例如: `<button> {L.onClick --> count.update(_ + 1)} </button>`
-- 支持Airstream中所有的反应式变量
-- 你可以把xhtml嵌入到Laminar的节点中或者把Laminar的节点嵌入到xhtml中
+- All nodes are `ReactiveElement.Base` so they are fully interoperable with Laminar.
+- All Laminar attributes, events and child nodes can be used, for example: `<button> {L.onClick --> count.update(_ + 1)} </button>`
+- All Airstream reactive variables are supported
+- You can embed xhtml into Laminar nodes and vice versa
 
 示例1:
 
@@ -103,16 +103,17 @@ import org.scalajs.dom
 
 ## 事件函数
 
-事件通过`element.addEventListener`绑定, 这意味着重复设置监听器都会生效。
-所有'onxxx'将被映射为 'xxx' ,提供下列函数支持:
+Events are bound via `element.addEventListener`, which means that repeated settings of listeners will take effect.
+All 'onxxx' will be mapped to 'xxx', providing the following function support:
 
 - `() => Unit`
 - `(e: Ev <: dom.Event) => Unit`
 - `(value:String) => Unit`
-  - 等效于 `(e: dom.Event) => f(e.target.value.getOrElse(""))`
+  - Equal `(e: dom.Event) => f(e.target.value.getOrElse(""))`
 - `(checked:Boolean) => Unit`
-  - 等效于 `(e: dom.Event) => f(e.target.checked.getOrElse(false))`
+  - Equal `(e: dom.Event) => f(e.target.checked.getOrElse(false))`
 - `(files:List[dom.File]) => Unit`
-  - 等效于 `(e: dom.Event) => f(e.target.files.getOrElse(List.empty))`
+  - Equal `(e: dom.Event) => f(e.target.files.getOrElse(List.empty))`
 
-支持通过Rx变量的设置监听函数 `Source[ListenerFunction]`,当监听函数变更时候, 会自动替换掉之前的监听函数。
+Supports setting the listener function `Source[ListenerFunction]` through Reactive variables.
+When the listener function changes, the previous listener function will be automatically replaced.

@@ -77,6 +77,8 @@ class PrefixedAttribute[V: AttributeBinder](
       - 等效于 `(e: dom.Event) => f(e.target.checked.getOrElse(false))`
     - `(files:List[dom.File]) => Unit`
       - 等效于 `(e: dom.Event) => f(e.target.files.getOrElse(List.empty))`
+    - `Source[ListenerFunction]`
+      - 当监听函数变化,会移除旧监听器
   """)
 trait AttributeBinder[T] {
   def bindAttr(element: ReactiveElementBase, namespaceURI: Option[String], key: String, value: T): Unit
