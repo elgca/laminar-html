@@ -63,6 +63,9 @@ object Elem {
           dom.document.createElementNS(ns, tagName).asInstanceOf[dom.svg.Element],
         )
       case Some(ns)                                   =>
+        // 这里我应该使用ReactiveHtmlElement?或者我应该用ElementNodeBase?
+        // ElementNodeBase将无法嵌入Laminar的HtmlProp等,因为类型不匹配
+        // 但是dom.document.createElementNS返回的是dom.html.Element么?
         new ReactiveHtmlElement(
           new HtmlTag(tagName),
           dom.document.createElementNS(ns, tagName).asInstanceOf[dom.html.Element],

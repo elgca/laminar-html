@@ -1,6 +1,6 @@
 package scala.xml
 
-import com.raquo.airstream.core.Source
+import com.raquo.airstream.core.{Observable, Source}
 import org.scalajs.dom
 
 import scala.annotation.{implicitNotFound, tailrec}
@@ -60,10 +60,23 @@ class PrefixedAttribute[V: AttributeBinder](
 
 @implicitNotFound(msg = """无法在 HTML 属性中嵌入类型为 ${T} 的值，未找到隐式的 AttributeBinder[${T}]。
   以下类型是支持的：
-  - String
-  - Boolean（false → 移除属性，true → 空属性）
-  - Source[T]:Var[T],Signal[T]等
-  - Option[String,Boolean]
+  - 属性类型:
+    - String
+    - Boolean: false → 移除属性; true → 空属性
+    - Int/Double: _.toString
+    - List[String]: _.mkString(" ")
+    - Option[T]
+  - 反应式变量:
+    - Source[T]: Var[T],Signal[T]等, T为属性类型
+  - 事件函数:
+    - `() => Unit`
+    - `(e: Ev <: dom.Event) => Unit`
+    - `(value:String) => Unit`
+      - 等效于 `(e: dom.Event) => f(e.target.value.getOrElse(""))`
+    - `(checked:Boolean) => Unit`
+      - 等效于 `(e: dom.Event) => f(e.target.checked.getOrElse(false))`
+    - `(files:List[dom.File]) => Unit`
+      - 等效于 `(e: dom.Event) => f(e.target.files.getOrElse(List.empty))`
   """)
 trait AttributeBinder[T] {
   def bindAttr(element: ReactiveElementBase, namespaceURI: Option[String], key: String, value: T): Unit
@@ -148,6 +161,8 @@ object AttributeBinder {
       }
   }
 
+  // 事件注册
+
   private inline def addEventListener[Event <: dom.Event](
     element: dom.Element,
     key: String,
@@ -155,6 +170,15 @@ object AttributeBinder {
   ): Unit = {
     // 对于onclick这样的映射到click事件上
     element.addEventListener(Events.get(key), fun)
+  }
+
+  private inline def removeEventListener[Event <: dom.Event](
+    element: dom.Element,
+    key: String,
+    fun: Event => Unit,
+  ): Unit = {
+    // 对于onclick这样的映射到click事件上
+    element.removeEventListener(Events.get(key), fun)
   }
 
   given Fun0Binder: AttributeBinder[() => Unit] = { (element, namespaceURI, key, fun) =>
@@ -198,11 +222,77 @@ object AttributeBinder {
           ev.target.asInstanceOf[Ref]
         })
   }
-//
-//  given EventListenerBinder[Ev <: dom.Event, Out]: AttributeBinder[EventListener[Ev, Out]] = {
-//    (element, namespaceURI, key, listener) =>
-//      listener.apply(element)
-//  }
+
+  // 支持 Source[JsListener]这样通过Rx变量的监听,允许事件监听函数更新
+  type JsListener = js.Function1[? <: dom.Event, Unit]
+
+  def listenerObservableBinder(
+    element: ReactiveElementBase,
+    key: String,
+    observable: Observable[JsListener],
+  ) = {
+    var before: Option[JsListener] = None
+    ReactiveElement.bindFn(element, observable) { jsFunc =>
+      before match {
+        case Some(listener) =>
+          removeEventListener(element.ref, key, listener)
+          addEventListener(element.ref, key, jsFunc)
+          before = Some(jsFunc)
+        case None           =>
+          addEventListener(element.ref, key, jsFunc)
+          before = Some(jsFunc)
+      }
+    }
+  }
+
+  given Fun0RxBinder[S[x] <: Source[x], T <: () => Unit]: AttributeBinder[S[T]] = { (element, namespaceURI, key, fun) =>
+    listenerObservableBinder(element, Events.get(key), fun.toObservable.map(f => ((_: dom.Event) => f()): JsListener))
+  }
+
+  given Fun1RxBinder[Event <: dom.Event, T <: Event => Unit, S[x] <: Source[x]]: AttributeBinder[S[T]] = {
+    (element, namespaceURI, key, fun) =>
+      listenerObservableBinder(element, Events.get(key), fun.toObservable.map(f => ((ev: Event) => f(ev)): JsListener))
+  }
+
+  given FunValueRxBinder[T <: String => Unit, S[x] <: Source[x]]: AttributeBinder[S[T]] = {
+    (element, namespaceURI, key, fun) =>
+      listenerObservableBinder(
+        element,
+        Events.get(key),
+        fun.toObservable.map(f =>
+          ((ev: dom.Event) => f(DomApi.getValue(ev.target.asInstanceOf[dom.Element]).getOrElse(""))): JsListener))
+  }
+
+  given FunCheckedRxBinder[T <: Boolean => Unit, S[x] <: Source[x]]: AttributeBinder[S[T]] = {
+    (element, namespaceURI, key, fun) =>
+      listenerObservableBinder(
+        element,
+        Events.get(key),
+        fun.toObservable.map(f =>
+          ((ev: dom.Event) => f(DomApi.getChecked(ev.target.asInstanceOf[dom.Element]).getOrElse(false))): JsListener),
+      )
+  }
+
+  given FunFilesRxBinder[T <: List[dom.File] => Unit, S[x] <: Source[x]]: AttributeBinder[S[T]] = {
+    (element, namespaceURI, key, fun) =>
+      listenerObservableBinder(
+        element,
+        Events.get(key),
+        fun.toObservable.map(f =>
+          ((ev: dom.Event) => f(DomApi.getFiles(ev.target.asInstanceOf[dom.Element]).getOrElse(Nil))): JsListener),
+      )
+  }
+
+  given FunTargetRxBinder[Ref <: dom.EventTarget, T <: Ref => Unit, S[x] <: Source[x]]: AttributeBinder[S[T]] = {
+    (element, namespaceURI, key, fun) =>
+      listenerObservableBinder(
+        element,
+        Events.get(key),
+        fun.toObservable.map(f => ((ev: dom.Event) => f(ev.target.asInstanceOf[Ref])): JsListener),
+      )
+  }
+
+  // Laminar Mod
 
   given htmlModBinder[Ref <: Node]: AttributeBinder[Ref] = { (element, namespaceURI, key, mod) =>
     mod.apply(element)

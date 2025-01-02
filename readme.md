@@ -101,7 +101,8 @@ import org.scalajs.dom
 
 ## 事件函数
 
-事件通过`element.addEventListener`绑定, 提供下列函数支持:
+事件通过`element.addEventListener`绑定, 这意味着重复设置监听器都会生效。
+所有'onxxx'将被映射为 'xxx' ,提供下列函数支持:
 
 - `() => Unit`
 - `(e: Ev <: dom.Event) => Unit`
@@ -111,3 +112,5 @@ import org.scalajs.dom
   - 等效于 `(e: dom.Event) => f(e.target.checked.getOrElse(false))`
 - `(files:List[dom.File]) => Unit`
   - 等效于 `(e: dom.Event) => f(e.target.files.getOrElse(List.empty))`
+
+支持通过Rx变量的设置监听函数 `Source[ListenerFunction]`,当监听函数变更时候, 会自动替换掉之前的监听函数。
