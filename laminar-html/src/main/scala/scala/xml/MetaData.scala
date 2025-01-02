@@ -80,7 +80,9 @@ object AttributeBinder {
   - List[String]: _.mkString(" ")
   - Option[T]
   """)
-  trait AttrValue[T] extends ((dom.Element, Option[String], String, T) => Unit)
+  trait AttrValue[T] {
+    def apply(node: dom.Element, ns: Option[String], key: String, value: T): Unit
+  }
 
   object AttrValue {
 
@@ -140,34 +142,46 @@ object AttributeBinder {
           (e: dom.Element, ns: Option[String], key: String, nextValue: T) =>
             if !AttrValue.getProperty(e, key).contains(nextValue) then AttrValue.setProperty(e, ns, key, nextValue)
         else if namespaceURI.isEmpty && Props.props.contains(key) then AttrValue.setProperty
-        else setter
+        else setter.apply
       ReactiveElement.bindFn(element, value.toObservable) { nextValue =>
         updater(element.ref, namespaceURI, key, nextValue)
       }
   }
 
+  private inline def addEventListener[Event <: dom.Event](
+    element: dom.Element,
+    key: String,
+    fun: Event => Unit,
+  ): Unit = {
+    // 对于onclick这样的映射到click事件上
+    element.addEventListener(Events.get(key), fun)
+  }
+
   given Fun0Binder: AttributeBinder[() => Unit] = { (element, namespaceURI, key, fun) =>
-    element.ref.addEventListener(key, (_: dom.Event) => fun())
+    addEventListener(element.ref, key, (_: dom.Event) => fun())
   }
 
   given Fun1Binder[Event <: dom.Event]: AttributeBinder[Event => Unit] = { (element, namespaceURI, key, fun) =>
-    element.ref.addEventListener(key, (ev: Event) => fun(ev))
+    addEventListener(element.ref, key, (ev: Event) => fun(ev))
   }
 
   given FunValueBinder: AttributeBinder[String => Unit] = { (element, namespaceURI, key, fun) =>
-    element.ref.addEventListener(
+    addEventListener(
+      element.ref,
       key,
       (ev: dom.Event) => fun(DomApi.getValue(ev.target.asInstanceOf[dom.Element]).getOrElse("")))
   }
 
   given FunCheckedBinder: AttributeBinder[Boolean => Unit] = { (element, namespaceURI, key, fun) =>
-    element.ref.addEventListener(
+    addEventListener(
+      element.ref,
       key,
       (ev: dom.Event) => fun(DomApi.getChecked(ev.target.asInstanceOf[dom.Element]).getOrElse(false)))
   }
 
   given FunFilesBinder: AttributeBinder[List[dom.File] => Unit] = { (element, namespaceURI, key, fun) =>
-    element.ref.addEventListener(
+    addEventListener(
+      element.ref,
       key,
       (ev: dom.Event) =>
         fun {
@@ -176,7 +190,8 @@ object AttributeBinder {
   }
 
   given FunTargetBinder[Ref <: dom.EventTarget]: AttributeBinder[Ref => Unit] = { (element, namespaceURI, key, fun) =>
-    element.ref.addEventListener(
+    addEventListener(
+      element.ref,
       key,
       (ev: dom.Event) =>
         fun {
