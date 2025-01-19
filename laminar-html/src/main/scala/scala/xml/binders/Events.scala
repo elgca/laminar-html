@@ -29,11 +29,12 @@ object ToJsListener {
   }
 }
 
-class AddEventListener[T](key: String, fun: T, toListener: ToJsListener[T])
+class AddEventListener[T](key: String, fun: T, removeFunc: Option[T], listenerConversion: ToJsListener[T])
     extends ((NamespaceBinding, ReactiveElementBase) => Unit) {
 
   def apply(namespaceBinding: NamespaceBinding, element: ReactiveElementBase): Unit = {
-    element.ref.addEventListener(key, toListener(fun))
+    removeFunc.foreach(f => element.ref.removeEventListener(key, listenerConversion(f)))
+    element.ref.addEventListener(key, listenerConversion(fun))
   }
 }
 

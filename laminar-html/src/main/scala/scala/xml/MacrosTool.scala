@@ -21,8 +21,6 @@ object MacrosTool {
     nodeExpr: Expr[Text],
     underlying: Expr[NodeBuffer],
   )(using quotes: Quotes): Expr[NodeBuffer] = {
-    import quotes.reflect.*
-
     import quoted.*
     constTextValue(nodeExpr) match
       case Some(value) =>
@@ -31,7 +29,7 @@ object MacrosTool {
         if trimmedValue.isEmpty then underlying // 空Text不添加
         else '{ ${ underlying }.&+(${ Expr(trimmedValue) }) }
       case None        =>
-        report.info("This is not a const TextValue")
+//        report.info("This is not a const TextValue")
         '{ ${ underlying }.&+(${ nodeExpr }.data) }
   }
 
@@ -109,19 +107,178 @@ object MacrosTool {
 
   inline def attributeRx[CC[x] <: Source[x], V](inline x: UnprefixedAttribute[CC[V]]): MetaData =
     ???
-//    Null
-//    ${
-//      unprefixedattributeMacro('x)
-//    }
 
   inline def attribute[T](inline x: PrefixedAttribute[T]): MetaData = ${ prefixedAttributeMacro('x) }
 
   inline def attributeRx[CC[x] <: Source[x], V](inline x: PrefixedAttribute[CC[V]]): MetaData =
     ???
-//    Null
-//    ${
-//      prefixedAttributeMacro('x)
-//    }
+
+  def bindEvent[T: Type](
+    eventKey: String,
+    addListenerFunction: Expr[T],
+    removeListenerFunction: Expr[Option[T]],
+  )(using quotes: Quotes): Expr[(NamespaceBinding, ReactiveElementBase) => Unit] = {
+    val conversion: Option[Expr[ToJsListener[T]]] = Expr.summon[ToJsListener[T]]
+    conversion match
+      case Some(funConversion) =>
+        '{
+          new AddEventListener(
+            ${ Expr(eventKey) },
+            ${ addListenerFunction },
+            ${ removeListenerFunction },
+            ${ funConversion })
+        }
+      case None                => CompileMessage.unsupportEventType[T]
+  }
+
+  def compositeItem[T: Type](valueExpr: Expr[T])(using quotes: Quotes): Expr[List[String]] = {
+    val separator = " "
+    val constStr  = constAnyValue(valueExpr)
+    if constStr.isDefined then {
+      val items = constStr.flatten
+        .filter(_.nonEmpty)
+        .map(_.split(separator).filter(_.nonEmpty).toList)
+        .getOrElse(List.empty)
+      Expr(items)
+    } else {
+      valueExpr match {
+        case strExpr: Expr[String] @unchecked if typeEquals[T, String]                =>
+          '{ AttrsApi.normalize(${ strExpr }, " ") }
+        case optStr: Expr[Option[String]] @unchecked if typeEquals[T, Option[String]] =>
+          '{ ${ optStr }.map(item => AttrsApi.normalize(item, " ")).getOrElse(Nil) }
+        case seqExpr: Expr[List[String]] @unchecked if typeEquals[T, List[String]]    =>
+          '{ ${ seqExpr }.flatMap(item => AttrsApi.normalize(item, " ")) }
+        case _                                                                        =>
+          CompileMessage.expectationType[T, String | Option[String] | List[String]]
+      }
+    }
+  }
+
+  def bindCompositeAttribute(
+    namespaceURI: Option[String],
+    prefix: Option[String],
+    attrKey: String,
+    itemsToAdd: Expr[List[String]],
+    itemsToRemove: Expr[List[String]],
+  )(using quotes: Quotes): Expr[(NamespaceBinding, ReactiveElementBase) => Unit] = {
+    '{ AttrsApi.setCompositeAttributeBinder(${ Expr(attrKey) }, ${ itemsToAdd }, ${ itemsToRemove }) }
+  }
+
+  def bindAttribute[T: Type](
+    namespaceURI: Option[String],
+    prefix: Option[String],
+    attrKey: String,
+    valueExpr: Expr[T],
+  )(using quotes: Quotes): Expr[(NamespaceBinding, ReactiveElementBase) => Unit] = {
+    val constStr: Option[String | Null] = constAnyValue(valueExpr).map(_.orNull)
+    val attrValue: Expr[String | Null]  = constStr match
+      case Some(const) => Expr(const)
+      case None        =>
+        valueExpr match {
+          case strExpr: Expr[String] @unchecked if typeEquals[T, String]                => strExpr
+          case optStr: Expr[Option[String]] @unchecked if typeInOptionEquals[T, String] => '{ ${ optStr }.orNull }
+          case _                                                                        => CompileMessage.expectationType[T, String | Option[String]]
+        }
+    '{ AttrsApi.setHtmlAttributeBinder(${ Expr(attrKey) }, ${ attrValue }) }
+  }
+
+  def bindHtmlProp[T: Type](
+    namespaceURI: Option[String],
+    prefix: Option[String],
+    propKey: String,
+    valueExpr: Expr[T],
+  )(using quotes: Quotes): Expr[(NamespaceBinding, ReactiveElementBase) => Unit] = {
+    constAnyValue(valueExpr) match
+      case Some(const) =>
+        def htmlConstPropBinder[R: Type: ToExpr](
+          f: String => R,
+        ): Expr[(NamespaceBinding, ReactiveElementBase) => Unit] =
+          const match {
+            case None              => '{ PropsApi.removeHtmlPropertyBinder(${ Expr(propKey) }) }
+            case Some(constString) =>
+              ScalaTry(f(constString))
+                .map(r => '{ PropsApi.setHtmlPropertyBinder(${ Expr(propKey) }, ${ Expr(r) }) })
+                .getOrElse(CompileMessage.unsupportConstProp[R](constString))
+          }
+
+        propKey match {
+          case Props.StringProp() => htmlConstPropBinder(_.toString)
+          case Props.BoolProp()   => htmlConstPropBinder(_.toBoolean)
+          case Props.DoubleProp() => htmlConstPropBinder(_.toDouble)
+          case Props.IntProp()    => htmlConstPropBinder(_.toInt)
+        }
+      case None        =>
+        def htmlPropBinder[EXPECT: Type: ToExpr]: Expr[(NamespaceBinding, ReactiveElementBase) => Unit] = {
+          valueExpr match {
+            case strExpr: Expr[EXPECT] @unchecked if typeEquals[T, EXPECT]                =>
+              '{ PropsApi.setHtmlPropertyBinder(${ Expr(propKey) }, ${ strExpr }) }
+            case optStr: Expr[Option[EXPECT]] @unchecked if typeInOptionEquals[T, EXPECT] =>
+              '{
+                ${ optStr }.fold(MetaData.EmptyBinder)(str =>
+                  PropsApi.setHtmlPropertyBinder(
+                    ${ Expr(propKey) }, {
+                      str
+                    }))
+              }
+
+            case _ => CompileMessage.expectationType[T, EXPECT | Option[EXPECT]]
+          }
+        }
+
+        propKey match {
+          case Props.StringProp() => htmlPropBinder[String]
+          case Props.BoolProp()   => htmlPropBinder[Boolean]
+          case Props.DoubleProp() => htmlPropBinder[Double]
+          case Props.IntProp()    => htmlPropBinder[Int]
+          //              case _                   => CompileMessage.impossibleError(attr)
+        }
+  }
+
+  def dattributeMacro[T: Type](
+    namespaceURI: Option[String],
+    prefix: Option[String],
+    key: String,
+    valueExpr: Expr[T],
+  )(using quotes: Quotes): Expr[(NamespaceBinding, ReactiveElementBase) => Unit] = {
+    key match {
+      case Events(eventKey) => bindEvent(eventKey, valueExpr, Expr(None))
+
+      case Props(propKey) =>
+        bindHtmlProp(
+          namespaceURI = namespaceURI,
+          prefix = prefix,
+          propKey = propKey,
+          valueExpr = valueExpr,
+        )
+
+      case Attrs(attrKey) if Attrs.isComposite(attrKey) =>
+        val addItems = compositeItem(valueExpr = valueExpr)
+        bindCompositeAttribute(
+          namespaceURI = namespaceURI,
+          prefix = prefix,
+          attrKey = attrKey,
+          itemsToAdd = addItems,
+          itemsToRemove = Expr(Nil),
+        )
+
+      case Attrs(attrKey) if !Attrs.isComposite(attrKey) =>
+        bindAttribute(
+          namespaceURI = namespaceURI,
+          prefix = prefix,
+          attrKey = attrKey,
+          valueExpr = valueExpr,
+        )
+
+      case _ =>
+        CompileMessage.notDefineAttrKey(key, valueExpr)
+        bindAttribute(
+          namespaceURI = namespaceURI,
+          prefix = prefix,
+          attrKey = key,
+          valueExpr = valueExpr,
+        )
+    }
+  }
 
   def unprefixedattributeMacro[T: Type](
     attr: Expr[UnprefixedAttribute[T]],
@@ -129,132 +286,26 @@ object MacrosTool {
     import quotes.*
     import quotes.reflect.*
 
+//    val symbol = Symbol.classSymbol("scala.xml.MacrosTool.MyImplConverter")
+//    println("sssss===>" + TypeTree.ref(symbol).tpe)
+//    val fnl: TypeRepr = AppliedType(TypeTree.ref(symbol).tpe, List(constType, TypeRepr.of[Target]))
+//    println("-------Final>" + fnl)
+//    println("------->" + Type.show(using fnl.asType))
+//    println("------->" + Type.show(using base.asType))
+
     // 这里应该是安全的
     val '{ new UnprefixedAttribute(${ keyExpr }, ${ valueExpr: Expr[T] }, ${ nextExpr }) } = attr: @unchecked
     val Literal(StringConstant(attrKey: String))                                           = keyExpr.asTerm: @unchecked
 
-    val binderExpr: Expr[(NamespaceBinding, ReactiveElementBase) => Unit] = attrKey match {
-      case Events(eventKey) =>
-        Expr
-          .summon[ToJsListener[T]]
-          .map(listener => '{ new AddEventListener(${ Expr(eventKey) }, ${ valueExpr }, ${ listener }) })
-          .getOrElse(CompileMessage.unsupportEventType[T])
-      case Props(propKey)   =>
-        constAnyValue(valueExpr) match
-          case Some(const) =>
-            def htmlConstPropBinder[R: Type: ToExpr](
-              f: String => R,
-            ): Expr[(NamespaceBinding, ReactiveElementBase) => Unit] =
-              const match {
-                case None              => '{ PropsApi.removeHtmlPropertyBinder(${ Expr(propKey) }) }
-                case Some(constString) =>
-                  ScalaTry(f(constString))
-                    .map(r => '{ PropsApi.setHtmlPropertyBinder(${ Expr(propKey) }, ${ Expr(r) }) })
-                    .getOrElse(CompileMessage.unsupportConstProp[R](constString))
-              }
+    val prefix: Option[String]       = None
+    val namespaceURI: Option[String] = None
 
-            propKey match {
-              case Props.StringProp(_) => htmlConstPropBinder(_.toString)
-              case Props.BoolProp(_)   => htmlConstPropBinder(_.toBoolean)
-              case Props.DoubleProp(_) => htmlConstPropBinder(_.toDouble)
-              case Props.IntProp(_)    => htmlConstPropBinder(_.toInt)
-            }
-          case None        =>
-            def htmlPropBinder[EXPECT: Type: ToExpr]: Expr[(NamespaceBinding, ReactiveElementBase) => Unit] = {
-              valueExpr match {
-                case strExpr: Expr[EXPECT] @unchecked if typeEquals[T, EXPECT]                =>
-                  '{ PropsApi.setHtmlPropertyBinder(${ Expr(propKey) }, ${ strExpr }) }
-                case optStr: Expr[Option[EXPECT]] @unchecked if typeInOptionEquals[T, EXPECT] =>
-                  '{
-                    ${ optStr }.fold(MetaData.EmptyBinder)(str =>
-                      PropsApi.setHtmlPropertyBinder(
-                        ${ Expr(propKey) }, {
-                          str
-                        }))
-                  }
-
-                case _ => CompileMessage.expectationType[T, EXPECT | Option[EXPECT]]
-              }
-            }
-
-            propKey match {
-              case Props.StringProp(_) => htmlPropBinder[String]
-              case Props.BoolProp(_)   => htmlPropBinder[Boolean]
-              case Props.DoubleProp(_) => htmlPropBinder[Double]
-              case Props.IntProp(_)    => htmlPropBinder[Int]
-//              case _                   => CompileMessage.impossibleError(attr)
-            }
-
-      case Attrs(attrKey) if Attrs.isComposite(attrKey) =>
-        val separator = " "
-        val constList = constAnyValue(valueExpr).map { x =>
-          x.filter(_.nonEmpty).map(_.split(separator).filter(_.nonEmpty).toList).getOrElse(List.empty)
-        }
-        constList match {
-          case Some(items) => '{ AttrsApi.setCompositeAttributeBinder(${ Expr(attrKey) }, ${ Expr(items) }, Nil) }
-          case None        =>
-            valueExpr match {
-              case strExpr: Expr[String] @unchecked if typeEquals[T, String]                =>
-                '{
-                  AttrsApi.setCompositeAttributeBinder(${ Expr(attrKey) }, AttrsApi.normalize(${ strExpr }, " "), Nil)
-                }
-              case optStr: Expr[Option[String]] @unchecked if typeInOptionEquals[T, String] =>
-                '{
-                  AttrsApi.setCompositeAttributeBinder(
-                    ${ Expr(attrKey) },
-                    ${ optStr }.map(item => AttrsApi.normalize(item, " ")).getOrElse(Nil),
-                    Nil)
-                }
-              case seqExpr: Expr[List[String]] @unchecked if typeEquals[T, List[String]]    =>
-                '{
-                  AttrsApi.setCompositeAttributeBinder(
-                    ${ Expr(attrKey) },
-                    ${ seqExpr }.flatMap(item => AttrsApi.normalize(item, " ")),
-                    Nil)
-                }
-              case _                                                                        =>
-                CompileMessage.expectationType[T, String | Option[String] | List[String]]
-            }
-        }
-
-      case Attrs(attrKey) if !Attrs.isComposite(attrKey) =>
-        constAnyValue(valueExpr) match {
-          case Some(None)        => '{ AttrsApi.removeHtmlAttributeBinder(${ Expr(attrKey) }) }
-          case Some(Some(const)) => '{ AttrsApi.setHtmlAttributeBinder(${ Expr(attrKey) }, ${ Expr(const) }) }
-          case None              =>
-            valueExpr match {
-              case strExpr: Expr[String] @unchecked if typeEquals[T, String]                =>
-                '{ AttrsApi.setHtmlAttributeBinder(${ Expr(attrKey) }, ${ strExpr }) }
-              case optStr: Expr[Option[String]] @unchecked if typeInOptionEquals[T, String] =>
-                '{
-                  ${ optStr }
-                    .map(strExpr => AttrsApi.setHtmlAttributeBinder(${ Expr(attrKey) }, strExpr))
-                    .getOrElse(MetaData.EmptyBinder)
-                }
-              case _                                                                        =>
-                CompileMessage.expectationType[T, String | Option[String]]
-            }
-        }
-      case _                                             =>
-        CompileMessage.notDefineAttrKey(attrKey, valueExpr)
-        constAnyValue(valueExpr) match {
-          case Some(None)        => '{ AttrsApi.removeHtmlAttributeBinder(${ Expr(attrKey) }) }
-          case Some(Some(const)) => '{ AttrsApi.setHtmlAttributeBinder(${ Expr(attrKey) }, ${ Expr(const) }) }
-          case None              =>
-            valueExpr match {
-              case strExpr: Expr[String] @unchecked if typeEquals[T, String]                =>
-                '{ AttrsApi.setHtmlAttributeBinder(${ Expr(attrKey) }, ${ strExpr }) }
-              case optStr: Expr[Option[String]] @unchecked if typeInOptionEquals[T, String] =>
-                '{
-                  ${ optStr }
-                    .map(strExpr => AttrsApi.setHtmlAttributeBinder(${ Expr(attrKey) }, strExpr))
-                    .getOrElse(MetaData.EmptyBinder)
-                }
-              case _                                                                        =>
-                CompileMessage.expectationType[T, String | Option[String]]
-            }
-        }
-    }
+    val binderExpr: Expr[(NamespaceBinding, ReactiveElementBase) => Unit] = dattributeMacro(
+      namespaceURI = namespaceURI,
+      prefix = prefix,
+      key = attrKey,
+      valueExpr = valueExpr,
+    )
 
     '{ MetaData(${ binderExpr }, ${ nextExpr }) }
   }
@@ -266,16 +317,20 @@ object MacrosTool {
     import quotes.reflect.*
     // 这里应该是安全的
     val '{ new PrefixedAttribute(${ prefixExpr }, ${ keyExpr }, ${ valueExpr }, ${ nextExpr }) } = attr: @unchecked
-    val Literal(StringConstant(attrPrefix: String))                                              = prefixExpr.asTerm: @unchecked
-    val Literal(StringConstant(attrKey: String))                                                 = keyExpr.asTerm: @unchecked
+
+    val Literal(StringConstant(attrPrefix: String)) = prefixExpr.asTerm: @unchecked
+    val Literal(StringConstant(attrKey: String))    = keyExpr.asTerm: @unchecked
 
     // 如果我可以获取默认配置获取的namespaceURI,那么就不需要通过Elem输入了
-    val namespaceURI = TopScope.namespaceURI(attrPrefix)
-    namespaceURI match {
-      case Some(namespace) => ???
-      case None            => ???
-    }
-    CompileMessage.impossibleError(attr)
+    val namespaceURI                                                      = TopScope.namespaceURI(attrPrefix)
+    val binderExpr: Expr[(NamespaceBinding, ReactiveElementBase) => Unit] = dattributeMacro(
+      namespaceURI = namespaceURI,
+      prefix = Some(attrPrefix),
+      key = attrKey,
+      valueExpr = valueExpr,
+    )
+
+    '{ MetaData(${ binderExpr }, ${ nextExpr }) }
   }
 
   /** 编译异常提示 */
@@ -364,6 +419,15 @@ object MacrosTool {
 
     given generate(using file: File, line: Line, name: FullName): MacrosPosition =
       MacrosPosition(file, line, name)
+  }
+
+  given nullToExpr[T <: String | scala.Null]: ToExpr[T] with {
+
+    override def apply(x: T)(using quotes: Quotes): Expr[T] = {
+      import quotes.reflect.*
+      if x == null then Literal(NullConstant()).asExpr.asInstanceOf[Expr[T]]
+      else Literal(StringConstant(x.asInstanceOf[String])).asExpr.asInstanceOf[Expr[T]]
+    }
   }
 
 }

@@ -13,7 +13,7 @@ object AttrsApi {
     inline name: String,
     inline value: String | Null,
   ): (NamespaceBinding, ReactiveElementBase) => Unit = (binding: NamespaceBinding, element: ReactiveElementBase) => {
-    if value == null then element.ref.removeAttribute(name)
+    if value == null || value == "" then element.ref.removeAttribute(name)
     else element.ref.setAttribute(name, value.asInstanceOf[String])
   }
 
@@ -88,6 +88,34 @@ object Attrs {
     compositeHtmlAttr.contains(attrKey)
   }
 
+  object StringAttr {
+
+    def unapply(e: String): Boolean = {
+      stringAttrs.contains(e) ||
+      stringSvgAttrs.contains(e) ||
+      complexAttrs(e)
+    }
+  }
+
+  object BooleanAttr {
+
+    def unapply(e: String): Boolean = {
+      boolAsTrueFalseAttrs.contains(e) || boolAsOnOffAttrs.contains(e)
+    }
+  }
+
+  object IntAttr {
+
+    def unapply(e: String): Boolean = {
+      intAttrs.contains(e) || intSvgAttr.contains(e)
+    }
+  }
+
+  object DoubleAttr {
+
+    def unapply(e: String): Boolean = { doubleSvgAttr.contains(e) }
+  }
+
   val stringAttrs = Set(
     "charset",
     "contextmenu",
@@ -129,6 +157,7 @@ object Attrs {
     else false
   }
 
+  // svg keys
   val intSvgAttr = Set(
     "numOctaves",
   )

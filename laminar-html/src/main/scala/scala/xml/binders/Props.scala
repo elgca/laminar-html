@@ -27,22 +27,22 @@ object Props {
   }
 
   object StringProp {
-    def unapply(x: String): Option[String] = Some(x).filter(stringProps.contains)
-    def apply(x: String): Boolean          = stringProps.contains(x)
+    def unapply(x: String): Boolean = stringProps.contains(x)
+    def apply(x: String): Boolean   = stringProps.contains(x)
   }
 
   object BoolProp {
-    def unapply(x: String)        = Some(x).filter(boolProps.contains)
+    def unapply(x: String)        = boolProps.contains(x)
     def apply(x: String): Boolean = boolProps.contains(x)
   }
 
   object DoubleProp {
-    def unapply(x: String)        = Some(x).filter(doubleProps.contains)
+    def unapply(x: String)        = doubleProps.contains(x)
     def apply(x: String): Boolean = doubleProps.contains(x)
   }
 
   object IntProp {
-    def unapply(x: String)        = Some(x).filter(intProps.contains)
+    def unapply(x: String)        = intProps.contains(x)
     def apply(x: String): Boolean = intProps.contains(x)
   }
 

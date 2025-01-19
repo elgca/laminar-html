@@ -16,9 +16,10 @@ val test = {
   L.role
 }
 
-val app = CompileCheck {
+val app = {
   val value = Var(0)
 
+  val hidden = true
   val dsfdsfsd = Option("true")
   <div class="test test1">
     <button onClick={() => value.update(_ + 1)}
@@ -27,7 +28,9 @@ val app = CompileCheck {
     >
       click me
     </button>
-    <button click={(str: Boolean) => println(str)}>
+    <button click={(str: Boolean) => println(str)}
+      hidden={hidden}
+    >
       click me
     </button>
     <p content={dsfdsfsd}>count :{value}</p>
