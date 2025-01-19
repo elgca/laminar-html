@@ -23,6 +23,7 @@ type RenderableSeq[-Collection[_]] = com.raquo.laminar.modifiers.RenderableSeq[C
 val DomApi          = com.raquo.laminar.DomApi
 val ReactiveElement = com.raquo.laminar.nodes.ReactiveElement
 val L               = com.raquo.laminar.api.L
+type Source[+A] = com.raquo.airstream.core.Source[A]
 
 class ElementNodeBase(
   override val tag: Tag[ReactiveElement[Element]],
