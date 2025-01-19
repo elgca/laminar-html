@@ -1,11 +1,10 @@
 package scala.xml
 
-import com.raquo.ew.ewArray
+import sourcecode.{File, FullName, Line}
 
 import java.util.Locale
 import scala.annotation.tailrec
 import scala.quoted.*
-import scala.scalajs.js.JSStringOps.*
 import scala.util.Try as ScalaTry
 import scala.xml.binders.*
 
@@ -30,10 +29,10 @@ object MacrosTool {
         // 检查是否是Text节点，并且有一个字符串字面量作为参数
         val trimmedValue = value.trim
         if trimmedValue.isEmpty then underlying // 空Text不添加
-        else '{ $underlying.&+(${ Expr(trimmedValue) }) }
+        else '{ ${ underlying }.&+(${ Expr(trimmedValue) }) }
       case None        =>
         report.info("This is not a const TextValue")
-        '{ $underlying.&+($nodeExpr.data) }
+        '{ ${ underlying }.&+(${ nodeExpr }.data) }
   }
 
   // 常量提取
@@ -61,28 +60,34 @@ object MacrosTool {
     rec(expr.asTerm)
   }
 
-  private def constAnyValue[T](expr: Expr[T])(using quotes: Quotes): Option[String | Null] = {
+  private def constAnyValue[T](expr: Expr[T])(using quotes: Quotes): Option[Option[String]] = {
     import quotes.reflect.*
 
     import quoted.*
 
-    val textTypeTpe                            = TypeTree.of[scala.xml.Text].tpe
+    val textTypeTpe = TypeTree.of[scala.xml.Text].tpe
+    val NullConst   = Some(None)
+
     @tailrec
-    def rec(trem: Term): Option[String | Null] = {
+    def rec(trem: Term): Option[Option[String]] = {
       trem match
         case Apply(
               Select(New(textType), _),
               List(Literal(StringConstant(value))),
             ) if textType.tpe =:= textTypeTpe =>
-          Some(value)
-        case Literal(value: Constant) =>
+          Some(Some(value))
+        case Literal(UnitConstant())       => NullConst
+        case Literal(NullConstant())       => NullConst
+        case Literal(ClassOfConstant(tpe)) =>
+          CompileMessage.unsupportConstPropBase(tpe.toString, tpe.asType)
+        case Literal(value: Constant)      =>
           val constValue = value.value
-          if constValue == null then Some(null)
-          else Some(constValue.toString)
-        case Typed(e, _)              => rec(e)
-        case Block(Nil, e)            => rec(e)
-        case Inlined(_, Nil, e)       => rec(e)
-        case _                        => None
+          Some(Option(constValue).map(_.toString))
+        case Ident("Nil")                  => NullConst // 处理一种很奇怪的场景, 当为 <div propkey="" />时候,常量为Nil
+        case Typed(e, _)                   => rec(e)
+        case Block(Nil, e)                 => rec(e)
+        case Inlined(_, Nil, e)            => rec(e)
+        case _                             => None
     }
     rec(expr.asTerm)
   }
@@ -141,11 +146,11 @@ object MacrosTool {
               f: String => R,
             ): Expr[(NamespaceBinding, ReactiveElementBase) => Unit] =
               const match {
-                case null        => '{ PropsApi.removeHtmlPropertyBinder(${ Expr(propKey) }) }
-                case constString =>
+                case None              => '{ PropsApi.removeHtmlPropertyBinder(${ Expr(propKey) }) }
+                case Some(constString) =>
                   ScalaTry(f(constString))
                     .map(r => '{ PropsApi.setHtmlPropertyBinder(${ Expr(propKey) }, ${ Expr(r) }) })
-                    .getOrElse(CompileMessage.unsupportConstProp[R](const))
+                    .getOrElse(CompileMessage.unsupportConstProp[R](constString))
               }
 
             propKey match {
@@ -182,9 +187,9 @@ object MacrosTool {
 
       case Attrs(attrKey) if Attrs.isComposite(attrKey) =>
         val separator = " "
-        val constList = constAnyValue(valueExpr).map(x =>
-          if x == null || x.isEmpty then Nil
-          else x.split(separator).filter(_.nonEmpty).toList)
+        val constList = constAnyValue(valueExpr).map { x =>
+          x.filter(_.nonEmpty).map(_.split(separator).filter(_.nonEmpty).toList).getOrElse(List.empty)
+        }
         constList match {
           case Some(items) => '{ AttrsApi.setCompositeAttributeBinder(${ Expr(attrKey) }, ${ Expr(items) }, Nil) }
           case None        =>
@@ -214,9 +219,9 @@ object MacrosTool {
 
       case Attrs(attrKey) if !Attrs.isComposite(attrKey) =>
         constAnyValue(valueExpr) match {
-          case Some(null)          => '{ AttrsApi.removeHtmlAttributeBinder(${ Expr(attrKey) }) }
-          case Some(const: String) => '{ AttrsApi.setHtmlAttributeBinder(${ Expr(attrKey) }, ${ Expr(const) }) }
-          case None                =>
+          case Some(None)        => '{ AttrsApi.removeHtmlAttributeBinder(${ Expr(attrKey) }) }
+          case Some(Some(const)) => '{ AttrsApi.setHtmlAttributeBinder(${ Expr(attrKey) }, ${ Expr(const) }) }
+          case None              =>
             valueExpr match {
               case strExpr: Expr[String] @unchecked if typeEquals[T, String]                =>
                 '{ AttrsApi.setHtmlAttributeBinder(${ Expr(attrKey) }, ${ strExpr }) }
@@ -231,8 +236,24 @@ object MacrosTool {
             }
         }
       case _                                             =>
-        println("-----------|Unknown>" + attr.show)
-        CompileMessage.impossibleError(valueExpr)
+        CompileMessage.notDefineAttrKey(attrKey, valueExpr)
+        constAnyValue(valueExpr) match {
+          case Some(None)        => '{ AttrsApi.removeHtmlAttributeBinder(${ Expr(attrKey) }) }
+          case Some(Some(const)) => '{ AttrsApi.setHtmlAttributeBinder(${ Expr(attrKey) }, ${ Expr(const) }) }
+          case None              =>
+            valueExpr match {
+              case strExpr: Expr[String] @unchecked if typeEquals[T, String]                =>
+                '{ AttrsApi.setHtmlAttributeBinder(${ Expr(attrKey) }, ${ strExpr }) }
+              case optStr: Expr[Option[String]] @unchecked if typeInOptionEquals[T, String] =>
+                '{
+                  ${ optStr }
+                    .map(strExpr => AttrsApi.setHtmlAttributeBinder(${ Expr(attrKey) }, strExpr))
+                    .getOrElse(MetaData.EmptyBinder)
+                }
+              case _                                                                        =>
+                CompileMessage.expectationType[T, String | Option[String]]
+            }
+        }
     }
 
     '{ MetaData(${ binderExpr }, ${ nextExpr }) }
@@ -264,7 +285,7 @@ object MacrosTool {
       Seq(Locale.CHINESE, Locale.CHINA, Locale.SIMPLIFIED_CHINESE, Locale.TRADITIONAL_CHINESE).contains(
         Locale.getDefault)
 
-    def unsupportEventType[T: Type](using quotes: Quotes): Nothing = raiseError {
+    def unsupportEventType[T: Type](using quotes: Quotes, position: MacrosPosition): Nothing = raiseError {
       if isChinese then {
         s"""不支持的事件类型 ${Type.show[T]}, 受到支持事件函数:
              |  - () => Unit
@@ -284,16 +305,22 @@ object MacrosTool {
       }
     }
 
-    def impossibleError[T: Type](expr: Expr[T])(using quotes: Quotes): Nothing = raiseError {
+    def notDefineAttrKey[T: Type](key: String, expr: Expr[T])(using quotes: Quotes, position: MacrosPosition): Unit =
+      logInfo {
+        if isChinese then s"""未定义的属性 ${key} = ${expr.show}"""
+        else s"""Not Define Attribute Key ${key} = ${expr.show}"""
+      }
+
+    def impossibleError[T: Type](expr: Expr[T])(using quotes: Quotes, position: MacrosPosition): Nothing = raiseError {
       if isChinese then s"不可能的代码分支 ${Type.show[T]}, ${expr.show}"
       else s"Impossible code branch ${Type.show[T]}, ${expr.show}"
     }
 
-    def impossibleError[T: Type](using quotes: Quotes): Nothing = raiseError {
+    def impossibleError[T: Type](using quotes: Quotes, position: MacrosPosition): Nothing = raiseError {
       if isChinese then s"不可能的代码分支 ${Type.show[T]}" else s"Impossible code branch ${Type.show[T]}"
     }
 
-    def expectationType[T: Type, Except: Type](using quotes: Quotes): Nothing = raiseError {
+    def expectationType[T: Type, Except: Type](using quotes: Quotes, position: MacrosPosition): Nothing = raiseError {
       if isChinese then {
         s"""期望类型为 `${Type.show[Except]}`, 但是实际类型为 `${Type.show[T]}`""".stripMargin
       } else {
@@ -301,21 +328,42 @@ object MacrosTool {
       }
     }
 
-    def unsupportConstProp[T: Type](value: String)(using quotes: Quotes): Nothing = raiseError {
-      import quotes.reflect.*
+    def unsupportConstProp[T: Type](value: String)(using quotes: Quotes, position: MacrosPosition): Nothing =
+      unsupportConstPropBase(value, summon[Type[T]])
 
-      val tpeInfo = if (TypeTree.of[T].tpe =:= TypeTree.of[Boolean].tpe) then "Boolean | true | false" else Type.show[T]
-      if isChinese then {
-        s"""该属性要求类型: ${tpeInfo}, 实际值为: ${value}""".stripMargin
-      } else {
-        s"""This property requires a type: ${tpeInfo}, actual value is: ${value}""".stripMargin
+    def unsupportConstPropBase(value: String, tpe: Type[?])(using quotes: Quotes, position: MacrosPosition): Nothing =
+      raiseError {
+        import quotes.reflect.*
+
+        val tpeInfo =
+          if (TypeTree.of(using tpe).tpe =:= TypeTree.of[Boolean].tpe) then "Boolean | true | false"
+          else Type.show(using tpe)
+        if isChinese then {
+          s"""该属性要求类型: ${tpeInfo}, 实际值为: ${value}""".stripMargin
+        } else {
+          s"""This property requires a type: ${tpeInfo}, actual value is: ${value}""".stripMargin
+        }
       }
+
+    def raiseError(msg: String)(using quotes: Quotes, position: MacrosPosition): Nothing = {
+      import quotes.reflect.*
+      report.errorAndAbort(msg + s"\n${position}")
     }
 
-    def raiseError(msg: String)(using quotes: Quotes): Nothing = {
+    def logInfo(msg: String)(using quotes: Quotes, position: MacrosPosition): Unit = {
       import quotes.reflect.*
-      report.errorAndAbort(msg)
+      report.info(msg + s"\n${position}")
     }
+  }
+
+  case class MacrosPosition(file: File, line: Line, name: FullName) {
+    override def toString: String = s"${file.value}:${line.value}"
+  }
+
+  object MacrosPosition {
+
+    given generate(using file: File, line: Line, name: FullName): MacrosPosition =
+      MacrosPosition(file, line, name)
   }
 
 }

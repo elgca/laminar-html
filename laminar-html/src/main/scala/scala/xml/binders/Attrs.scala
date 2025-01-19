@@ -311,7 +311,8 @@ object Attrs {
     "xlink" -> "xmlns",
   )
 
-  val allAttrs =
-    stringAttrs ++ intAttrs ++ boolAsOnOffAttrs ++ boolAsTrueFalseAttrs ++ compositeHtmlAttr ++ intSvgAttr ++ doubleSvgAttr ++ stringSvgAttrs
-
+  val allAttrs = {
+    stringAttrs ++ intAttrs ++ boolAsOnOffAttrs ++ boolAsTrueFalseAttrs ++ compositeHtmlAttr
+      ++ intSvgAttr ++ doubleSvgAttr ++ stringSvgAttrs
+  }
 }

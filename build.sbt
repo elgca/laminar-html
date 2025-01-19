@@ -17,6 +17,7 @@ lazy val jsSettings = Seq(
   libraryDependencies ++= Seq(
     "org.scala-js" %%% "scalajs-dom" % "2.8.0",
     "com.raquo"    %%% "laminar"     % "17.2.0",
+    "com.lihaoyi"  %%% "sourcecode"  % "0.4.3-M5",
   ),
   // testing
   libraryDependencies += "com.lihaoyi" %%% "utest" % "0.8.1" % "test",
