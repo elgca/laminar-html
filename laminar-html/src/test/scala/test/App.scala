@@ -3,7 +3,9 @@ package test
 import com.raquo.airstream.state.Var
 
 import scala.xml.RenderableNodeImplicit.given
+import com.raquo.laminar.api.*
 
+import scala.xml.binders.Mount
 val boolVar = Var(false)
 import com.raquo.laminar.api.L
 
@@ -17,13 +19,13 @@ val test = {
 }
 
 val app = {
-  val value = Var(0)
-
-  val hidden = true
+  val value    = Var(0)
+  val hidden   = true
   val dsfdsfsd = Option("true")
   <div class="test test1">
     <button onClick={() => value.update(_ + 1)}
-            testccc={}
+            cccc={L.className := "htllo"}
+            onmount={() => {}}
             ggg=""
     >
       click me
@@ -38,7 +40,7 @@ val app = {
   </div>
 }
 
-val svgHtml = CompileCheck {
+val svgHtml = /*CompileCheck*/ {
   <svg
     xmlns="http://www.w3.org/2000/svg"
     width="16"

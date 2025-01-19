@@ -1,11 +1,13 @@
 package scala.xml
 
+import com.raquo.laminar.lifecycle.MountContext
 import sourcecode.{File, FullName, Line}
 
 import java.util.Locale
 import scala.annotation.tailrec
 import scala.quoted.*
 import scala.util.Try as ScalaTry
+import scala.xml.MacrosTool.CompileMessage.????
 import scala.xml.binders.*
 
 object MacrosTool {
@@ -29,7 +31,6 @@ object MacrosTool {
         if trimmedValue.isEmpty then underlying // 空Text不添加
         else '{ ${ underlying }.&+(${ Expr(trimmedValue) }) }
       case None        =>
-//        report.info("This is not a const TextValue")
         '{ ${ underlying }.&+(${ nodeExpr }.data) }
   }
 
@@ -40,7 +41,8 @@ object MacrosTool {
 
     import quoted.*
 
-    val textTypeTpe                     = TypeTree.of[scala.xml.Text].tpe
+    val textTypeTpe = TypeTree.of[scala.xml.Text].tpe
+
     @tailrec
     def rec(trem: Term): Option[String] = {
       trem match
@@ -106,12 +108,12 @@ object MacrosTool {
   }
 
   inline def attributeRx[CC[x] <: Source[x], V](inline x: UnprefixedAttribute[CC[V]]): MetaData =
-    ???
+    ${ unprefixedattributeRxMacro('x) }
 
   inline def attribute[T](inline x: PrefixedAttribute[T]): MetaData = ${ prefixedAttributeMacro('x) }
 
   inline def attributeRx[CC[x] <: Source[x], V](inline x: PrefixedAttribute[CC[V]]): MetaData =
-    ???
+    ${ prefixedAttributeRxMacro('x) }
 
   def bindEvent[T: Type](
     eventKey: String,
@@ -240,7 +242,62 @@ object MacrosTool {
     key: String,
     valueExpr: Expr[T],
   )(using quotes: Quotes): Expr[(NamespaceBinding, ReactiveElementBase) => Unit] = {
+
+    // 在xhtml中嵌入lamianr的Modifier
+    Expr.summon[AttributeBinder[String, T]] match {
+      case Some(binder) =>
+        return '{ (ns: NamespaceBinding, element: ReactiveElementBase) =>
+          {
+            ${ binder }.bindAttr(
+              element,
+              None,
+              None,
+              ${ Expr(key) },
+              ${ valueExpr },
+            )
+          }
+        }
+      case None         =>
+    }
+
     key match {
+      case Hooks(hookKey)   =>
+        hookKey match
+          case "onmount"   =>
+            val callbackFunc =
+              valueExpr match
+                case func: Expr[Hooks.MountFunc] @unchecked if typeEquals[T, Hooks.MountFunc]                  =>
+                  '{ (ctx: MountContext[ReactiveElementBase]) => ${ func }.apply(ctx.thisNode.ref) }
+                case funcUnit: Expr[Hooks.MountFuncUnit] @unchecked if typeEquals[T, Hooks.MountFuncUnit]      =>
+                  '{ (ctx: MountContext[ReactiveElementBase]) => ${ funcUnit }.apply() }
+                case funcCtx: Expr[Hooks.MountFuncContext] @unchecked if typeEquals[T, Hooks.MountFuncContext] =>
+                  funcCtx
+                case _                                                                                         =>
+                  CompileMessage.expectationType[
+                    T,
+                    Hooks.MountFunc | Hooks.MountFuncUnit | Hooks.MountFuncContext,
+                  ]
+
+            '{ (ns: NamespaceBinding, element: ReactiveElementBase) =>
+              L.onMountCallback(${ callbackFunc }).apply(element)
+            }
+          case "onunmount" =>
+            val callbackFunc: Expr[ReactiveElementBase => Unit] = valueExpr match
+              case func: Expr[Hooks.UnMountFunc] @unchecked if typeEquals[T, Hooks.UnMountFunc]                  =>
+                '{ (ctx: ReactiveElementBase) => ${ func }.apply(ctx.ref) }
+              case funcUnit: Expr[Hooks.UnMountFuncUnit] @unchecked if typeEquals[T, Hooks.UnMountFuncUnit]      =>
+                '{ (ctx: ReactiveElementBase) => ${ funcUnit }.apply() }
+              case funcCtx: Expr[Hooks.UnMountFuncContext] @unchecked if typeEquals[T, Hooks.UnMountFuncContext] =>
+                funcCtx
+              case _                                                                                             =>
+                CompileMessage.expectationType[
+                  T,
+                  Hooks.MountFunc | Hooks.MountFuncUnit | Hooks.MountFuncContext,
+                ]
+
+            '{ (ns: NamespaceBinding, element: ReactiveElementBase) =>
+              L.onUnmountCallback(${ callbackFunc }).apply(element)
+            }
       case Events(eventKey) => bindEvent(eventKey, valueExpr, Expr(None))
 
       case Props(propKey) =>
@@ -295,10 +352,10 @@ object MacrosTool {
 
     // 这里应该是安全的
     val '{ new UnprefixedAttribute(${ keyExpr }, ${ valueExpr: Expr[T] }, ${ nextExpr }) } = attr: @unchecked
-    val Literal(StringConstant(attrKey: String))                                           = keyExpr.asTerm: @unchecked
 
-    val prefix: Option[String]       = None
-    val namespaceURI: Option[String] = None
+    val Literal(StringConstant(attrKey: String)) = keyExpr.asTerm: @unchecked
+    val prefix: Option[String]                   = None
+    val namespaceURI: Option[String]             = None
 
     val binderExpr: Expr[(NamespaceBinding, ReactiveElementBase) => Unit] = dattributeMacro(
       namespaceURI = namespaceURI,
@@ -333,6 +390,19 @@ object MacrosTool {
     '{ MetaData(${ binderExpr }, ${ nextExpr }) }
   }
 
+  // Rx变量解析
+  def unprefixedattributeRxMacro[T: Type](
+    attr: Expr[UnprefixedAttribute[T]],
+  )(using quotes: Quotes): Expr[MetaData] = {
+    ????
+  }
+
+  def prefixedAttributeRxMacro[T: Type](
+    attr: Expr[PrefixedAttribute[T]],
+  )(using quotes: Quotes): Expr[MetaData] = {
+    ????
+  }
+
   /** 编译异常提示 */
   object CompileMessage {
 
@@ -342,7 +412,7 @@ object MacrosTool {
 
     def unsupportEventType[T: Type](using quotes: Quotes, position: MacrosPosition): Nothing = raiseError {
       if isChinese then {
-        s"""不支持的事件类型 ${Type.show[T]}, 受到支持事件函数:
+        s"""不支持的事件类型 ${formatType[T]}, 受到支持事件函数:
              |  - () => Unit
              |  - (event:T <: dom.Event) => Unit
              |  - (value:String) => Unit
@@ -350,7 +420,7 @@ object MacrosTool {
              |  - (file:List[dom.File]) => Unit
              |""".stripMargin
       } else {
-        s"""Unsupport Events Type ${Type.show[T]}, Supported event functions:
+        s"""Unsupport Events Type ${formatType[T]}, Supported event functions:
              |  - () => Unit
              |  - (event:T <: dom.Event) => Unit
              |  - (value:String) => Unit
@@ -360,27 +430,65 @@ object MacrosTool {
       }
     }
 
-    def notDefineAttrKey[T: Type](key: String, expr: Expr[T])(using quotes: Quotes, position: MacrosPosition): Unit =
-      logInfo {
-        if isChinese then s"""未定义的属性 ${key} = ${expr.show}"""
-        else s"""Not Define Attribute Key ${key} = ${expr.show}"""
-      }
-
-    def impossibleError[T: Type](expr: Expr[T])(using quotes: Quotes, position: MacrosPosition): Nothing = raiseError {
-      if isChinese then s"不可能的代码分支 ${Type.show[T]}, ${expr.show}"
-      else s"Impossible code branch ${Type.show[T]}, ${expr.show}"
+    def notDefineAttrKey[T: Type](key: String, expr: Expr[T])(using quotes: Quotes, position: MacrosPosition): Unit = {
+//      logInfo {
+//        if isChinese then s"""未定义的属性 ${key} = ${expr.show}"""
+//        else s"""Not Define Attribute Key ${key} = ${expr.show}"""
+//      }
     }
 
-    def impossibleError[T: Type](using quotes: Quotes, position: MacrosPosition): Nothing = raiseError {
-      if isChinese then s"不可能的代码分支 ${Type.show[T]}" else s"Impossible code branch ${Type.show[T]}"
+    def ????(using quotes: Quotes, position: MacrosPosition): Nothing = raiseError {
+      if isChinese then s"还未实现功能/非法分支"
+      else s"an implementation is missing"
     }
 
     def expectationType[T: Type, Except: Type](using quotes: Quotes, position: MacrosPosition): Nothing = raiseError {
       if isChinese then {
-        s"""期望类型为 `${Type.show[Except]}`, 但是实际类型为 `${Type.show[T]}`""".stripMargin
+        s"""不支持的数据类型: `${formatType[T]}`, 期望以下数据类型:
+           |${typeExplain[Except]}
+           |""".stripMargin
       } else {
-        s"""Expectation Type is `${Type.show[Except]}`, But the actual type is `${Type.show[T]}`""".stripMargin
+        s"""Unsupported data types: `${formatType[T]}`, The following data types are expected:
+           |${typeExplain[Except]}
+           |""".stripMargin
       }
+    }
+
+    def typeExplain[T: Type](using quotes: Quotes): String = {
+      import quotes.reflect.*
+
+      val typeRepr = TypeRepr.of[T]
+
+      @tailrec
+      def rec(trem: List[TypeRepr], buf: List[TypeRepr]): List[TypeRepr] = {
+        trem match
+          case OrType(t1, t2) :: tail => rec(t1 :: t2 :: tail, buf)
+          case head :: tail           => rec(tail, head :: buf)
+          case Nil                    => buf
+      }
+
+      rec(typeRepr :: Nil, Nil).map(x => "  - " + formatType(using x.asType)).sortBy(_.length).mkString("\n")
+    }
+
+    def formatType[T <: AnyKind](using Type[T])(using quotes: Quotes): String = {
+      import quotes.*
+      import quotes.reflect.*
+      val typeRepr = TypeRepr.of[T]
+
+      val scalaFuncs: List[TypeRepr] = (0 to 22)
+        .map(x => s"scala.Function${x}")
+        .map(fullName => Symbol.classSymbol(fullName))
+        .map(symbol => TypeTree.ref(symbol).tpe)
+        .toList
+
+      typeRepr match
+        case AppliedType(tycon, args) if scalaFuncs.exists(fType => fType =:= tycon) =>
+          if args.length == 1 then {
+            s"() => ${args.last.show}"
+          } else {
+            s"(${args.dropRight(1).map(_.show).mkString(", ")}) => ${args.last.show}"
+          }
+        case other                                                                   => other.show
     }
 
     def unsupportConstProp[T: Type](value: String)(using quotes: Quotes, position: MacrosPosition): Nothing =
@@ -392,7 +500,7 @@ object MacrosTool {
 
         val tpeInfo =
           if (TypeTree.of(using tpe).tpe =:= TypeTree.of[Boolean].tpe) then "Boolean | true | false"
-          else Type.show(using tpe)
+          else formatType(using tpe)
         if isChinese then {
           s"""该属性要求类型: ${tpeInfo}, 实际值为: ${value}""".stripMargin
         } else {

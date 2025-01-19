@@ -15,7 +15,17 @@ trait AttributeBinder[T <: String, DomValue] {
     element: ReactiveElementBase,
     namespaceURI: Option[String],
     prefix: Option[String],
-    key: String,
+    key: T,
     value: DomValue | scala.Null,
   ): Unit
+}
+
+object AttributeBinder {
+
+  // Laminar Mod
+  given htmlModBinder[Ref <: AnyNode]: AttributeBinder[String, Ref] = { (element, namespaceURI, prefix, key, mod) =>
+    mod match
+      case null  =>
+      case other => other.asInstanceOf[Node].apply(element)
+  }
 }
