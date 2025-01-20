@@ -1,0 +1,18 @@
+{
+  "name": "scalajs-dynimport-bug",
+  "version": "0.1.0-SNAPSHOT",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "dev-debug": "vite --debug",
+    "build": "vite build",
+    "build-debug": "vite build --debug",
+    "preview": "vite preview"
+  },
+  "license": "UNLICENSED",
+  "dependencies": {
+    "@tabler/core": "1.0.0-beta24",
+    "vite": "^5.2.10"
+  }
+}
