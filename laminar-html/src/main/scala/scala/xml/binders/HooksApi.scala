@@ -5,24 +5,28 @@ import com.raquo.laminar.api.L.MountContext
 import org.scalajs.dom
 
 object HooksApi {
-  type MountFunc        = dom.Element => Unit
-  type MountFuncUnit    = () => Unit
-  type MountFuncContext = MountContext[ReactiveElementBase] => Unit
-  type MountFuncValid   = MountFunc | MountFuncUnit | MountFuncContext
+  type MountFunc[T <: dom.Element] = T => Unit
+  type MountFuncUnit               = () => Unit
+  type UnMountFuncEl               = ReactiveElementBase => Unit
+  type MountFuncContext            = MountContext[ReactiveElementBase] => Unit
+  type MountFuncValid              = MountFunc[? <: dom.Element] | MountFuncUnit | MountFuncContext | UnMountFuncEl
 
-  type UnMountFunc        = dom.Element => Unit
-  type UnMountFuncUnit    = () => Unit
-  type UnMountFuncContext = ReactiveElementBase => Unit
-  type UnMountFuncValid   = UnMountFunc | UnMountFuncUnit | UnMountFuncContext
+  type UnMountFunc[T <: dom.Element] = T => Unit
+  type UnMountFuncUnit               = () => Unit
+  type UnMountFuncContext            = ReactiveElementBase => Unit
+  type UnMountFuncValid              = UnMountFunc[? <: dom.Element] | UnMountFuncUnit | UnMountFuncContext
 
   trait ToMountFunc[T] {
     def apply(fun: T): MountFuncContext
   }
 
   object ToMountFunc {
-    given func: ToMountFunc[MountFunc]       = fun => (e: MountContext[ReactiveElementBase]) => fun(e.thisNode.ref)
-    given unit: ToMountFunc[MountFuncUnit]   = fun => (e: MountContext[ReactiveElementBase]) => fun()
-    given ctx: ToMountFunc[MountFuncContext] = fun => fun
+
+    given func[T <: dom.Element]: ToMountFunc[MountFunc[T]] = fun =>
+      (e: MountContext[ReactiveElementBase]) => fun(e.thisNode.ref.asInstanceOf[T])
+    given unit: ToMountFunc[MountFuncUnit]                  = fun => (e: MountContext[ReactiveElementBase]) => fun()
+    given el: ToMountFunc[UnMountFuncEl]                    = fun => (e: MountContext[ReactiveElementBase]) => fun(e.thisNode)
+    given ctx: ToMountFunc[MountFuncContext]                = fun => fun
   }
 
   trait ToUnMountFunc[T] {
@@ -30,9 +34,11 @@ object HooksApi {
   }
 
   object ToUnMountFunc {
-    given func: ToUnMountFunc[UnMountFunc]       = (fun) => (e: ReactiveElementBase) => fun(e.ref)
-    given unit: ToUnMountFunc[UnMountFuncUnit]   = (fun) => (e: ReactiveElementBase) => fun()
-    given ctx: ToUnMountFunc[UnMountFuncContext] = (fun) => fun
+
+    given func[T <: dom.Element]: ToUnMountFunc[UnMountFunc[T]] = (fun) =>
+      (e: ReactiveElementBase) => fun(e.ref.asInstanceOf[T])
+    given unit: ToUnMountFunc[UnMountFuncUnit]                  = (fun) => (e: ReactiveElementBase) => fun()
+    given ctx: ToUnMountFunc[UnMountFuncContext]                = (fun) => fun
   }
 
   object Mount {

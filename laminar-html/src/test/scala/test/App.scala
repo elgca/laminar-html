@@ -2,27 +2,11 @@ package test
 
 import com.raquo.airstream.state.Var
 import com.raquo.laminar.api.*
+import com.raquo.laminar.nodes.ReactiveElement
 
-import scala.quoted.Quotes
 import scala.xml.RenderableNodeImplicit.given
-import scala.xml.binders.Attrs
 val boolVar = Var(false)
 import com.raquo.laminar.api.L
-
-val test = {
-  L.widthAttr
-  L.width
-  L.value
-  L.svg.width
-//  L.className
-  L.svg.className
-  L.svg.rect
-  L.role
-}
-
-given provide: scala.xml.binders.Attrs.AttrProvider["test"] with {
-  override def apply(using Quotes): Attrs.AttrMacros[String] = scala.xml.binders.Attrs.AttrMacros.StringAttr
-}
 
 val app = {
   val value    = Var(0)
@@ -33,8 +17,6 @@ val app = {
             cccc={L.className := "htllo"}
             onmount={() => {}}
             ggg={value.signal.map(_.toString)}
-    
-            test="hello"
     >
       click me
     </button>
