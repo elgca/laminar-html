@@ -3,17 +3,25 @@ package test
 import com.raquo.airstream.state.Var
 import com.raquo.laminar.api.*
 
+import scala.quoted.Quotes
 import scala.xml.RenderableNodeImplicit.given
+import scala.xml.binders.Attrs
 val boolVar = Var(false)
 import com.raquo.laminar.api.L
 
 val test = {
   L.widthAttr
   L.width
+  L.value
   L.svg.width
 //  L.className
   L.svg.className
+  L.svg.rect
   L.role
+}
+
+given provide: scala.xml.binders.Attrs.AttrProvider["test"] with {
+  override def apply(using Quotes): Attrs.AttrMacros[String] = scala.xml.binders.Attrs.AttrMacros.StringAttr
 }
 
 val app = {
@@ -25,6 +33,8 @@ val app = {
             cccc={L.className := "htllo"}
             onmount={() => {}}
             ggg={value.signal.map(_.toString)}
+    
+            test="hello"
     >
       click me
     </button>
@@ -49,18 +59,20 @@ val testVar = {
   val attr = true
   <button
     value={value}
-    contenteditable={"off"}
+    minLength ="1"
+    contenteditable={Some("true")}
     click={clickFunc}
     />
 }
 
-val svgHtml = CompileCheck {
+val svgHtml = {
+  val classDef = Option("bi bi-0-circle-fill")
   <svg
     xmlns="http://www.w3.org/2000/svg"
     width="16"
     height="16"
     fill="currentColor"
-    class="bi bi-0-circle-fill"
+    class={classDef}
     viewBox="0 0 16 16"
   >
     <path d="M8 4.951c-1.008 0-1.629 1.09-1.629 2.895v.31c0 1.81.627 2.895 1.629 2.895s1.623-1.09 1.623-2.895v-.31c0-1.8-.621-2.895-1.623-2.895"/>

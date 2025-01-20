@@ -8,11 +8,13 @@ trait MetaData {
   def apply(namespaceBinding: NamespaceBinding, element: ReactiveElementBase): Unit
 }
 
+type MetatDataBinder = (NamespaceBinding, ReactiveElementBase) => Unit
+
 object MetaData {
-  val EmptyBinder: (namespaceBinding: NamespaceBinding, element: ReactiveElementBase) => Unit = (a, b) => {}
+  val EmptyBinder: MetatDataBinder = (a, b) => {}
 
   class Attribute(
-    val binder: (namespaceBinding: NamespaceBinding, element: ReactiveElementBase) => Unit,
+    val binder: MetatDataBinder,
     val next: MetaData,
   ) extends MetaData {
 

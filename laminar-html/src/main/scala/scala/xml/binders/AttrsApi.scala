@@ -13,7 +13,7 @@ object AttrsApi {
     namespace: NamespaceBinding => Option[String],
     name: String,
     value: String | Null,
-  ): (NamespaceBinding, ReactiveElementBase) => Unit = (binding: NamespaceBinding, element: ReactiveElementBase) => {
+  ): MetatDataBinder = (binding: NamespaceBinding, element: ReactiveElementBase) => {
     setHtmlAttributeRaw(namespace(binding), element.ref, name, value)
   }
 
@@ -53,29 +53,49 @@ object AttrsApi {
     name: String,
     itemsToAdd: List[String],
     itemsToRemove: List[String],
-  ): (NamespaceBinding, ReactiveElementBase) => Unit = (binding: NamespaceBinding, element: ReactiveElementBase) => {
+  ): MetatDataBinder = (binding: NamespaceBinding, element: ReactiveElementBase) => {
     val namespaceURI = namespace(binding)
 
     val separator = " "
-    val domValue  = getHtmlAttributeRaw(namespaceURI, element.ref, name).map(normalize(_, separator)).getOrElse(Nil)
+    val domValue  = getHtmlAttributeRaw(namespaceURI, element.ref, name)
+      .map(CompositeNormalize.normalize(_, separator))
+      .getOrElse(Nil)
     val newItems  = (domValue.filterNot(t => itemsToRemove.contains(t)) ++ itemsToAdd).distinct
 
     val nextDomValue = newItems.mkString(separator)
     setHtmlAttributeRaw(namespaceURI, element.ref, name, nextDomValue)
   }
 
-  /** @param items
-    *   non-normalized string with one or more items
-    *   separated by `separator`
-    * @return
-    *   individual values. Note that normalization does NOT
-    *   ensure that the items are unique.
-    */
-  def normalize(items: String, separator: String): List[String] = {
-    if items.isEmpty then {
-      Nil
-    } else {
-      items.jsSplit(separator).ew.filter(_.nonEmpty).asScalaJs.toList
-    }
+  trait CompositeNormalize[T] {
+    def apply(items: T): List[String]
   }
+
+  object CompositeNormalize {
+    type CompositeValidTypes = String | IterableOnce[String]
+
+    /** @param items
+      *   non-normalized string with one or more items
+      *   separated by `separator`
+      * @return
+      *   individual values. Note that normalization does
+      *   NOT ensure that the items are unique.
+      */
+    def normalize(items: String, separator: String): List[String] = {
+      if items.isEmpty then {
+        Nil
+      } else {
+        items.jsSplit(separator).ew.filter(_.nonEmpty).asScalaJs.toList
+      }
+    }
+
+    given str: CompositeNormalize[String] = items => normalize(items, " ")
+
+    given seq[CC <: IterableOnce[String]]: CompositeNormalize[CC] = value =>
+      value.iterator.flatMap(items => normalize(items, " ")).toList
+  }
+
+  // namespace provider
+  val noNamespace                                    = (ns: NamespaceBinding) => None
+  def namespaceWithPrefix(prefix: String)            = (ns: NamespaceBinding) => ns.namespaceURI(prefix)
+  def namespaceWithURI(namespaceURI: Option[String]) = (ns: NamespaceBinding) => namespaceURI
 }

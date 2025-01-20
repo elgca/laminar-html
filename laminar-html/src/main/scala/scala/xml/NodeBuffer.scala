@@ -28,6 +28,7 @@ class NodeBuffer extends Seq[Node] {
     &+(L.child <-- source)
   }
 
+  /** 嵌入的Source[Elem]将会作为子节点插入, */
   @annotation.targetName("addChildren")
   def &+[Collection[_]: RenderableSeq, Component: RenderableNode](
     source: Source[Collection[Component]],
@@ -39,6 +40,7 @@ class NodeBuffer extends Seq[Node] {
   def &+(o: scala.Null | Unit): NodeBuffer = { this }
 
   // 兼容Laminar，我想把Elem继承ReactiveElementBase,但是失败了,无法完全应用Laminar属性
+  // 只有 ReactiveSvgElement 和 ReactiveHtmlElement 可以完全使用Lamianr的Modify
   def &+(o: Elem): NodeBuffer = {
     underlying.addOne(o.reactiveElement)
     this

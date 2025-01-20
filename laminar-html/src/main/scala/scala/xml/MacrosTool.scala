@@ -1,18 +1,19 @@
 package scala.xml
 
-import com.raquo.laminar.lifecycle.MountContext
-import sourcecode.{File, FullName, Line}
-
-import java.util.Locale
 import scala.annotation.tailrec
 import scala.quoted.*
-import scala.util.Try as ScalaTry
+import scala.xml.MacorsMessage.????
 import scala.xml.binders.*
 
 object MacrosTool {
 
-  /** NodeBuffer添加Text节点时候执行:{{{Text(value) => val a =
-    * value.trim; if(a.noEmpty) add(a) }}}
+  /** NodeBuffer添加Text节点时候执行, 由于xml字面量会带着一些空格插入,但是这个是不需要的
+    * {{{Text("   "), Text("   \nxxx\n   ")}}}
+    * 所以执行:{{{Text(value) => val a = value.trim;
+    * if(a.noEmpty) add(a) }}}
+    *
+    * 如果需要换行文本,使用嵌入对象方式例如: {{{ <code>{""" a x ... xxx
+    * """"}</code> }}}
     */
   inline def trimOrDropTextNode(inline node: Text, underlying: NodeBuffer): NodeBuffer = {
     ${ trimOrDropTextNodeMacros('node, 'underlying) }
@@ -78,7 +79,7 @@ object MacrosTool {
         case Literal(UnitConstant())       => NullConst
         case Literal(NullConstant())       => NullConst
         case Literal(ClassOfConstant(tpe)) =>
-          CompileMessage.unsupportConstPropBase(tpe.toString, tpe.asType)
+          MacorsMessage.unsupportConstProp(tpe.toString)(using tpe.asType)
         case Literal(value: Constant)      =>
           val constValue = value.value
           Some(Option(constValue).map(_.toString))
@@ -88,17 +89,32 @@ object MacrosTool {
         case Inlined(_, Nil, e)            => rec(e)
         case _                             => None
     }
+
+    def fromOpt[ConstType: FromExpr: Type](e: Expr[T]): Option[Option[String]] = {
+      expr match {
+        case '{ new Some[ConstType](${ Expr(value) }) } => Some(Some(value.toString))
+        case '{ Some[ConstType](${ Expr(value) }) }     => Some(Some(value.toString))
+        case '{ Option[ConstType](${ Expr(value) }) }   => Some(Some(value.toString))
+        case '{ None }                                  => Some(None)
+        case _                                          => None
+      }
+    }
+
     rec(expr.asTerm)
+      .orElse(fromOpt[String](expr))
+      .orElse(fromOpt[Double](expr))
+      .orElse(fromOpt[Boolean](expr))
+      .orElse(fromOpt[Float](expr))
+      .orElse(fromOpt[Char](expr))
+      .orElse(fromOpt[Byte](expr))
+      .orElse(fromOpt[Short](expr))
+      .orElse(fromOpt[Int](expr))
+      .orElse(fromOpt[Long](expr))
   }
 
   private def typeEquals[Base: Type, Target: Type](using quotes: Quotes): Boolean = {
     import quotes.reflect.*
-    TypeTree.of[Base].tpe <:< TypeTree.of[Target].tpe
-  }
-
-  private def typeInOptionEquals[Base: Type, Target: Type](using quotes: Quotes): Boolean = {
-    import quotes.reflect.*
-    TypeTree.of[Base].tpe <:< TypeTree.of[Option[Target]].tpe
+    TypeRepr.of[Base] <:< TypeRepr.of[Target]
   }
 
   // 属性绑定
@@ -118,7 +134,7 @@ object MacrosTool {
     eventKey: String,
     addListenerFunction: Expr[T],
     removeListenerFunction: Expr[Option[T]],
-  )(using quotes: Quotes): Expr[(NamespaceBinding, ReactiveElementBase) => Unit] = {
+  )(using quotes: Quotes): Expr[MetatDataBinder] = {
     import EventsApi.*
     val conversion: Option[Expr[ToJsListener[T]]] = Expr.summon[ToJsListener[T]]
     conversion match
@@ -130,30 +146,33 @@ object MacrosTool {
             element.ref.addEventListener(${ Expr(eventKey) }, ${ funConversion }.apply(${ addListenerFunction }))
           }
         }
-      case None                => CompileMessage.unsupportEventType[T]
+      case None                => MacorsMessage.unsupportEventType[T]
   }
 
   def compositeItem[T: Type](valueExpr: Expr[T])(using quotes: Quotes): Expr[List[String]] = {
-    val separator = " "
-    val constStr  = constAnyValue(valueExpr)
+    import AttrsApi.*
+    val constStr = constAnyValue(valueExpr)
     if constStr.isDefined then {
-      val items = constStr.flatten
-        .filter(_.nonEmpty)
-        .map(_.split(separator).filter(_.nonEmpty).toList)
-        .getOrElse(List.empty)
+      val items = constStr.flatten.getOrElse("").split(" ").filter(_.nonEmpty).toList
       Expr(items)
     } else {
-      valueExpr match {
-        case strExpr: Expr[String] @unchecked if typeEquals[T, String]                =>
-          '{ AttrsApi.normalize(${ strExpr }, " ") }
-        case optStr: Expr[Option[String]] @unchecked if typeEquals[T, Option[String]] =>
-          '{ ${ optStr }.map(item => AttrsApi.normalize(item, " ")).getOrElse(Nil) }
-        case seqExpr: Expr[List[String]] @unchecked if typeEquals[T, List[String]]    =>
-          '{ ${ seqExpr }.flatMap(item => AttrsApi.normalize(item, " ")) }
-        case _                                                                        =>
-          CompileMessage.expectationType[T, String | Option[String] | List[String]]
-      }
+      Expr.summon[CompositeNormalize[T]] match
+        case Some(value) => '{ ${ value }.apply(${ valueExpr }) }
+        case None        => MacorsMessage.expectationType[T, CompositeNormalize.CompositeValidTypes]
     }
+  }
+
+  def namespaceFunction(
+    namespaceURI: Option[String],
+    prefix: Option[String],
+  )(using quotes: Quotes): Expr[NamespaceBinding => Option[String]] = {
+    import AttrsApi.*
+    prefix
+      .map(px => {
+        if namespaceURI.isDefined then '{ namespaceWithURI(${ Expr(namespaceURI) }) }
+        else '{ namespaceWithPrefix(${ Expr(px) }) }
+      })
+      .getOrElse('{ noNamespace })
   }
 
   def bindCompositeAttribute(
@@ -162,16 +181,9 @@ object MacrosTool {
     attrKey: String,
     itemsToAdd: Expr[List[String]],
     itemsToRemove: Expr[List[String]],
-  )(using quotes: Quotes): Expr[(NamespaceBinding, ReactiveElementBase) => Unit] = {
-    val name = prefix.map(_ + ":" + attrKey).getOrElse(attrKey)
-
-    val nsFunc: Expr[NamespaceBinding => Option[String]] = prefix
-      .map(px => {
-        if namespaceURI.isDefined then '{ (ns: NamespaceBinding) => ${ Expr(namespaceURI) } }
-        else '{ (ns: NamespaceBinding) => ns.namespaceURI(${ Expr(px) }) }
-      })
-      .getOrElse('{ (ns: NamespaceBinding) => None })
-
+  )(using quotes: Quotes): Expr[MetatDataBinder] = {
+    val name   = prefix.map(_ + ":" + attrKey).getOrElse(attrKey)
+    val nsFunc = namespaceFunction(namespaceURI, prefix)
     '{ AttrsApi.setCompositeAttributeBinder(${ nsFunc }, ${ Expr(name) }, ${ itemsToAdd }, ${ itemsToRemove }) }
   }
 
@@ -180,115 +192,115 @@ object MacrosTool {
     prefix: Option[String],
     attrKey: String,
     valueExpr: Expr[T],
-  )(using quotes: Quotes): Expr[(NamespaceBinding, ReactiveElementBase) => Unit] = {
+  )(using quotes: Quotes): Expr[MetatDataBinder] = {
+    import Attrs.AttrMacros
+    val nsFunc = namespaceFunction(namespaceURI, prefix)
+    val name   = prefix.map(_ + ":" + attrKey).getOrElse(attrKey)
+    val macros = AttrMacros.withKey(attrKey)
+
     val constStr: Option[String | Null] = constAnyValue(valueExpr).map(_.orNull)
-    val attrValue: Expr[String | Null]  = constStr match
-      case Some(const) => Expr(const)
-      case None        =>
-        valueExpr match {
-          case strExpr: Expr[String] @unchecked if typeEquals[T, String]                => strExpr
-          case optStr: Expr[Option[String]] @unchecked if typeEquals[T, Option[String]] => '{ ${ optStr }.orNull }
-          case _                                                                        => CompileMessage.expectationType[T, String | Option[String]]
-        }
+    constStr match {
+      case Some(value) => macros.withConst(nsFunc, name, value)
+      case None        => macros.withExpr(nsFunc, name, valueExpr)
+    }
+  }
 
-    val nsFunc: Expr[NamespaceBinding => Option[String]] = prefix
-      .map(px => {
-        if namespaceURI.isDefined then '{ (ns: NamespaceBinding) => ${ Expr(namespaceURI) } }
-        else '{ (ns: NamespaceBinding) => ns.namespaceURI(${ Expr(px) }) }
-      })
-      .getOrElse('{ (ns: NamespaceBinding) => None })
+  def attrProvider(
+    key: String,
+  )(using quotes: Quotes): Option[Expr[Attrs.AttrProvider[?]]] = {
+    import quotes.*
+    import quotes.reflect.*
 
-    val name = prefix.map(_ + ":" + attrKey).getOrElse(attrKey)
+    // 这里尝试获取隐式 AttributeBinder["hello", T] , hello是key的常量类型
+    val keyConstType          = ConstantType(StringConstant(key))
+    val binderSymbol          = Symbol.classSymbol(classOf[Attrs.AttrProvider[?]].getName)
+    val clsTpe                = TypeTree.ref(binderSymbol).tpe
+    val providerType: Type[?] = AppliedType(clsTpe, List(keyConstType)).asType
+    Implicits.search(TypeRepr.of(using providerType)) match {
+      case iss: ImplicitSearchSuccess => Some(iss.tree.asExpr.asInstanceOf[Expr[Attrs.AttrProvider[?]]])
+      case isf: ImplicitSearchFailure => None
+    }
+  }
 
-    '{ AttrsApi.setHtmlAttributeBinder(${ nsFunc }, ${ Expr(name) }, ${ attrValue }) }
+  def bindUnknownAttribute[T: Type](
+    namespaceURI: Option[String],
+    prefix: Option[String],
+    attrKey: String,
+    valueExpr: Expr[T],
+  )(using quotes: Quotes): Expr[MetatDataBinder] = {
+    import Attrs.AttrMacros
+    val nsFunc = namespaceFunction(namespaceURI, prefix)
+    val name   = prefix.map(_ + ":" + attrKey).getOrElse(attrKey)
+    val macros = AttrMacros.StringAttr
+
+    MacorsMessage.notDefineAttrKey(name, valueExpr)
+
+    val constStr: Option[String | Null] = constAnyValue(valueExpr).map(_.orNull)
+    constStr match {
+      case Some(value) => macros.withConst(nsFunc, name, value)
+      case None        => macros.withExpr(nsFunc, name, valueExpr)
+    }
+  }
+
+  def EmptyBinder(using Quotes) = {
+    '{ MetaData.EmptyBinder }
   }
 
   def bindHtmlProp[T: Type](
     propKey: String,
     valueExpr: Expr[T],
-  )(using quotes: Quotes): Expr[(NamespaceBinding, ReactiveElementBase) => Unit] = {
-    constAnyValue(valueExpr) match
-      case Some(const) =>
-        def htmlConstPropBinder[R: Type: ToExpr](
-          f: String => R,
-        ): Expr[(NamespaceBinding, ReactiveElementBase) => Unit] =
-          const match {
-            case None              => '{ PropsApi.removeHtmlPropertyBinder(${ Expr(propKey) }) }
-            case Some(constString) =>
-              ScalaTry(f(constString))
-                .map(r => '{ PropsApi.setHtmlPropertyBinder(${ Expr(propKey) }, ${ Expr(r) }) })
-                .getOrElse(CompileMessage.unsupportConstProp[R](constString))
-          }
-
-        propKey match {
-          case Props.StringProp() => htmlConstPropBinder(_.toString)
-          case Props.BoolProp()   => htmlConstPropBinder(_.toBoolean)
-          case Props.DoubleProp() => htmlConstPropBinder(_.toDouble)
-          case Props.IntProp()    => htmlConstPropBinder(_.toInt)
-        }
-      case None        =>
-        def htmlPropBinder[EXPECT: Type: ToExpr]: Expr[(NamespaceBinding, ReactiveElementBase) => Unit] = {
-          valueExpr match {
-            case strExpr: Expr[EXPECT] @unchecked if typeEquals[T, EXPECT]                =>
-              '{ PropsApi.setHtmlPropertyBinder(${ Expr(propKey) }, ${ strExpr }) }
-            case optStr: Expr[Option[EXPECT]] @unchecked if typeEquals[T, Option[EXPECT]] =>
-              '{
-                ${ optStr }.fold(MetaData.EmptyBinder)(str =>
-                  PropsApi.setHtmlPropertyBinder(
-                    ${ Expr(propKey) }, {
-                      str
-                    }))
-              }
-
-            case _ => CompileMessage.expectationType[T, EXPECT | Option[EXPECT]]
-          }
-        }
-
-        propKey match {
-          case Props.StringProp() => htmlPropBinder[String]
-          case Props.BoolProp()   => htmlPropBinder[Boolean]
-          case Props.DoubleProp() => htmlPropBinder[Double]
-          case Props.IntProp()    => htmlPropBinder[Int]
-        }
+  )(using quotes: Quotes): Expr[MetatDataBinder] = {
+    val macors = Props.PropMacros.withKey(propKey)
+    constAnyValue(valueExpr) match {
+      case Some(value) => value.map(str => macors.withConst(str)).getOrElse(EmptyBinder)
+      case None        => macors.withExpr(valueExpr)
+    }
   }
+
+//  def implicitBaseBinder[T: Type](
+//    namespaceURI: Option[String],
+//    prefix: Option[String],
+//    key: String,
+//    valueExpr: Expr[T],
+//  )(using quotes: Quotes): Option[Expr[MetatDataBinder]] = {
+//    import quotes.*
+//    import quotes.reflect.*
+//
+//    // 这里尝试获取隐式 AttributeBinder["hello", T] , hello是key的常量类型
+//    val keyConstType       = ConstantType(StringConstant(key))
+//    val binderSymbol       = Symbol.classSymbol(classOf[BaseBinder[?, ?]].getName)
+//    val clsTpe             = TypeTree.ref(binderSymbol).tpe
+//    val binderTpe: Type[?] = AppliedType(clsTpe, List(keyConstType, TypeRepr.of[T])).asType
+//
+//    Implicits.search(TypeRepr.of(using binderTpe)) match {
+//      case iss: ImplicitSearchSuccess => {
+//        val binderExpr: Expr[BaseBinder[String, T]] =
+//          iss.tree.asExpr.asInstanceOf[Expr[BaseBinder[String, T]]]
+//
+//        '{ (ns: NamespaceBinding, element: ReactiveElementBase) =>
+//          {
+//            ${ binderExpr }.bindAttr(
+//              element,
+//              None,
+//              None,
+//              ${ Expr(key) },
+//              ${ valueExpr },
+//            )
+//          }
+//        }
+//      }
+//      case isf: ImplicitSearchFailure =>
+//    }
+//  }
 
   def dattributeMacro[T: Type](
     namespaceURI: Option[String],
     prefix: Option[String],
     key: String,
     valueExpr: Expr[T],
-  )(using quotes: Quotes): Expr[(NamespaceBinding, ReactiveElementBase) => Unit] = {
-    import quotes.*
-    import quotes.reflect.*
-
-    // 这里尝试获取隐式 AttributeBinder["hello", T] , hello是key的常量类型
-    val keyConstType       = ConstantType(StringConstant(key))
-    val binderSymbol       = Symbol.classSymbol(classOf[AttributeBinder[?, ?]].getName)
-    val clsTpe             = TypeTree.ref(binderSymbol).tpe
-    val binderTpe: Type[?] = AppliedType(clsTpe, List(keyConstType, TypeRepr.of[T])).asType
-
-    Implicits.search(TypeRepr.of(using binderTpe)) match {
-      case iss: ImplicitSearchSuccess => {
-        val binderExpr: Expr[AttributeBinder[String, T]] =
-          iss.tree.asExpr.asInstanceOf[Expr[AttributeBinder[String, T]]]
-
-        return '{ (ns: NamespaceBinding, element: ReactiveElementBase) =>
-          {
-            ${ binderExpr }.bindAttr(
-              element,
-              None,
-              None,
-              ${ Expr(key) },
-              ${ valueExpr },
-            )
-          }
-        }
-      }
-      case isf: ImplicitSearchFailure =>
-    }
-
+  )(using quotes: Quotes): Expr[MetatDataBinder] = {
     // 在xhtml中嵌入lamianr的Modifier
-    Expr.summon[AttributeBinder[String, T]] match {
+    Expr.summon[BaseBinder[String, T]] match {
       case Some(binder) =>
         return '{ (ns: NamespaceBinding, element: ReactiveElementBase) =>
           {
@@ -305,28 +317,8 @@ object MacrosTool {
     }
 
     key match {
-      case Hooks(hookKey) if prefix.isEmpty   =>
-        import HooksApi.*
-        hookKey match
-          case "onmount"   =>
-            val conversion: Option[Expr[ToMountFunc[T]]] = Expr.summon[ToMountFunc[T]]
-            val callbackFunc                             = conversion
-              .map(x => '{ ${ x }.apply(${ valueExpr }) })
-              .getOrElse(CompileMessage.expectationType[T, MountFuncValid])
-
-            '{ (ns: NamespaceBinding, element: ReactiveElementBase) =>
-              L.onMountCallback(${ callbackFunc }).apply(element)
-            }
-          case "onunmount" => {
-            val conversion: Option[Expr[ToUnMountFunc[T]]] = Expr.summon[ToUnMountFunc[T]]
-            val callbackFunc                               = conversion
-              .map(x => '{ ${ x }.apply(${ valueExpr }) })
-              .getOrElse(CompileMessage.expectationType[T, UnMountFuncValid])
-            '{ (ns: NamespaceBinding, element: ReactiveElementBase) =>
-              L.onUnmountCallback(${ callbackFunc }).apply(element)
-            }
-          }
-      case Events(eventKey) if prefix.isEmpty => bindEvent(eventKey, valueExpr, Expr(None))
+      case Hooks.HooksMacros(hooks) if prefix.isEmpty => hooks.withHooks(valueExpr)
+      case Events(eventKey) if prefix.isEmpty         => bindEvent(eventKey, valueExpr, Expr(None))
 
       case Props(propKey) if prefix.isEmpty =>
         bindHtmlProp(
@@ -353,8 +345,7 @@ object MacrosTool {
         )
 
       case _ =>
-        CompileMessage.notDefineAttrKey(key, valueExpr)
-        bindAttribute(
+        bindUnknownAttribute(
           namespaceURI = namespaceURI,
           prefix = prefix,
           attrKey = key,
@@ -376,7 +367,7 @@ object MacrosTool {
     val prefix: Option[String]                   = None
     val namespaceURI: Option[String]             = None
 
-    val binderExpr: Expr[(NamespaceBinding, ReactiveElementBase) => Unit] = dattributeMacro(
+    val binderExpr: Expr[MetatDataBinder] = dattributeMacro(
       namespaceURI = namespaceURI,
       prefix = prefix,
       key = attrKey,
@@ -398,8 +389,8 @@ object MacrosTool {
     val Literal(StringConstant(attrKey: String))    = keyExpr.asTerm: @unchecked
 
     // 如果我可以获取默认配置获取的namespaceURI,那么就不需要通过Elem输入了
-    val namespaceURI                                                      = TopScope.namespaceURI(attrPrefix)
-    val binderExpr: Expr[(NamespaceBinding, ReactiveElementBase) => Unit] = dattributeMacro(
+    val namespaceURI                      = TopScope.namespaceURI(attrPrefix)
+    val binderExpr: Expr[MetatDataBinder] = dattributeMacro(
       namespaceURI = namespaceURI,
       prefix = Some(attrPrefix),
       key = attrKey,
@@ -409,7 +400,73 @@ object MacrosTool {
     '{ MetaData(${ binderExpr }, ${ nextExpr }) }
   }
 
-  // Rx变量解析
+  // ------ Rx变量解析 ---------
+
+  def dattributeRxMacro[V: Type, CC <: Source[V]: Type](
+    namespaceURI: Option[String],
+    prefix: Option[String],
+    key: String,
+    sourceValue: Expr[CC],
+  )(using quotes: Quotes): Expr[MetatDataBinder] = {
+    key match {
+      case "value" if prefix.isEmpty          => {
+        sourceValue match {
+          case sourceStr: Expr[Source[String]] @unchecked if typeEquals[V, String] =>
+            '{ PropsApi.valuePropUpdater(${ sourceStr }) }
+
+          case _ => MacorsMessage.expectationType[CC, Source[String]]
+        }
+      }
+      case Events(eventKey) if prefix.isEmpty => {
+        '{ (ns: NamespaceBinding, element: ReactiveElementBase) =>
+          var before: Option[V] = None
+          ReactiveElement.bindFn(element, ${ sourceValue }.toObservable) { nextValue =>
+            ${
+              bindEvent(eventKey, 'nextValue, 'before)
+            }.apply(ns, element)
+            before = Some(nextValue)
+          }
+        }
+      }
+
+      case Attrs(attrKey) if Attrs.isComposite(attrKey) => {
+        '{ (ns: NamespaceBinding, element: ReactiveElementBase) =>
+          var before: List[String] = Nil
+          ReactiveElement.bindFn(element, ${ sourceValue }.toObservable) { nextValue =>
+            val addItems = ${ compositeItem(valueExpr = 'nextValue) }
+            ${
+              val updaterExpr: Expr[MetatDataBinder] = bindCompositeAttribute(
+                namespaceURI = namespaceURI,
+                prefix = prefix,
+                attrKey = attrKey,
+                itemsToAdd = 'addItems,
+                itemsToRemove = 'before,
+              )
+              updaterExpr
+            }.apply(ns, element)
+            before = addItems
+          }
+        }
+      }
+
+      case otherKeys => {
+        '{ (ns: NamespaceBinding, element: ReactiveElementBase) =>
+          ReactiveElement.bindFn(element, ${ sourceValue }.toObservable) { nextValue =>
+            ${
+              val updaterExpr: Expr[MetatDataBinder] = dattributeMacro(
+                namespaceURI = namespaceURI,
+                prefix = prefix,
+                key = otherKeys,
+                valueExpr = 'nextValue,
+              )
+              updaterExpr
+            }.apply(ns, element)
+          }
+        }
+      }
+    }
+  }
+
   def unprefixedattributeRxMacro[V: Type, CC <: Source[V]: Type](
     attr: Expr[UnprefixedAttribute[CC]],
   )(using quotes: Quotes): Expr[MetaData] = {
@@ -419,53 +476,16 @@ object MacrosTool {
     // 这里应该是安全的
     val '{ new UnprefixedAttribute(${ keyExpr }, ${ valueExpr: Expr[CC] }, ${ nextExpr }) } = attr: @unchecked
 
-    val Literal(StringConstant(attrKey: String)) = keyExpr.asTerm: @unchecked
-    val prefix: Option[String]                   = None
-    val namespaceURI: Option[String]             = None
-    val sourceValue: Expr[CC]                    = valueExpr
+    val Literal(StringConstant(key: String)) = keyExpr.asTerm: @unchecked
+    val prefix: Option[String]               = None
+    val namespaceURI: Option[String]         = None
 
-    val binderExpr: Expr[(NamespaceBinding, ReactiveElementBase) => Unit] =
-      if attrKey == "value" && prefix.isEmpty then {
-        sourceValue match {
-          case sourceStr: Expr[Source[String]] @unchecked if typeEquals[V, String] =>
-            '{ (ns: NamespaceBinding, element: ReactiveElementBase) =>
-              ReactiveElement.bindFn(element, ${ sourceStr }.toObservable) { nextValue =>
-                PropsApi.updateWhenKeyIsValue(element, nextValue)
-              }
-            }
-
-          case _ => CompileMessage.expectationType[CC, Source[String]]
-        }
-      } else {
-        attrKey match {
-          case Events(eventKey) => {
-            '{ (ns: NamespaceBinding, element: ReactiveElementBase) =>
-              var before: Option[V] = None
-              ReactiveElement.bindFn(element, ${ sourceValue }.toObservable) { nextValue =>
-                ${
-                  bindEvent(eventKey, 'nextValue, 'before)
-                }.apply(ns, element)
-                before = Some(nextValue)
-              }
-            }
-          }
-          case key              => {
-            '{ (ns: NamespaceBinding, element: ReactiveElementBase) =>
-              ReactiveElement.bindFn(element, ${ sourceValue }.toObservable) { nextValue =>
-                ${
-                  val updaterExpr: Expr[(NamespaceBinding, ReactiveElementBase) => Unit] = dattributeMacro(
-                    namespaceURI = namespaceURI,
-                    prefix = prefix,
-                    key = key,
-                    valueExpr = 'nextValue,
-                  )
-                  updaterExpr
-                }.apply(ns, element)
-              }
-            }
-          }
-        }
-      }
+    val binderExpr: Expr[MetatDataBinder] = dattributeRxMacro[V, CC](
+      namespaceURI = namespaceURI,
+      prefix = prefix,
+      key = key,
+      sourceValue = valueExpr,
+    )
 
     '{ MetaData(${ binderExpr }, ${ nextExpr }) }
   }
@@ -487,166 +507,15 @@ object MacrosTool {
     val Literal(StringConstant(attrKey: String))    = keyExpr.asTerm: @unchecked
 
     // 如果我可以获取默认配置获取的namespaceURI,那么就不需要通过Elem输入了
-    val namespaceURI          = TopScope.namespaceURI(attrPrefix)
-    val sourceValue: Expr[CC] = valueExpr
+    val namespaceURI = TopScope.namespaceURI(attrPrefix)
 
-    val binderExpr: Expr[(NamespaceBinding, ReactiveElementBase) => Unit] = '{
-      (ns: NamespaceBinding, element: ReactiveElementBase) =>
-        ReactiveElement.bindFn(element, ${ sourceValue }.toObservable) { nextValue =>
-          ${
-            val updaterExpr: Expr[(NamespaceBinding, ReactiveElementBase) => Unit] = dattributeMacro(
-              namespaceURI = namespaceURI,
-              prefix = Option(attrPrefix),
-              key = attrKey,
-              valueExpr = 'nextValue,
-            )
-            updaterExpr
-          }.apply(ns, element)
-        }
-    }
+    val binderExpr: Expr[MetatDataBinder] = dattributeRxMacro[V, CC](
+      namespaceURI = namespaceURI,
+      prefix = Option(attrPrefix),
+      key = attrKey,
+      sourceValue = valueExpr,
+    )
 
     '{ MetaData(${ binderExpr }, ${ nextExpr }) }
   }
-
-  /** 编译异常提示 */
-  object CompileMessage {
-
-    val isChinese =
-      Seq(Locale.CHINESE, Locale.CHINA, Locale.SIMPLIFIED_CHINESE, Locale.TRADITIONAL_CHINESE).contains(
-        Locale.getDefault)
-
-    def unsupportEventType[T: Type](using quotes: Quotes, position: MacrosPosition): Nothing = raiseError {
-      if isChinese then {
-        s"""不支持的事件类型 ${formatType[T]}, 受到支持事件函数:
-             |  - () => Unit
-             |  - (event:T <: dom.Event) => Unit
-             |  - (value:String) => Unit
-             |    等效于 (e: dom.Event) => f(e.target.value.getOrElse(""))
-             |  - (checked:Boolean) => Unit
-             |    等效于 (e: dom.Event) => f(e.target.checked.getOrElse(false))
-             |  - (file:List[dom.File]) => Unit
-             |    等效于 (e: dom.Event) => f(e.target.files.getOrElse(List.empty))
-             |""".stripMargin
-      } else {
-        s"""Unsupport Events Type ${formatType[T]}, Supported event functions:
-             |  - () => Unit
-             |  - (event:T <: dom.Event) => Unit
-             |  - (value:String) => Unit
-             |    Equivalent (e: dom.Event) => f(e.target.value.getOrElse(""))
-             |  - (checked:Boolean) => Unit
-             |    Equivalent (e: dom.Event) => f(e.target.checked.getOrElse(false))
-             |  - (file:List[dom.File]) => Unit
-             |    Equivalent (e: dom.Event) => f(e.target.files.getOrElse(List.empty))
-             |""".stripMargin
-      }
-    }
-
-    def notDefineAttrKey[T: Type](key: String, expr: Expr[T])(using quotes: Quotes, position: MacrosPosition): Unit = {
-      logInfo {
-        if isChinese then s"""未定义的属性 ${key} = ${expr.show}, 类型: ${formatType[T]}"""
-        else s"""Not Define Attribute Key ${key} = ${expr.show}, type: ${formatType[T]}"""
-      }
-    }
-
-    def ????(using quotes: Quotes, position: MacrosPosition): Nothing = raiseError {
-      if isChinese then s"还未实现功能/非法分支"
-      else s"an implementation is missing"
-    }
-
-    def expectationType[T: Type, Except: Type](using quotes: Quotes, position: MacrosPosition): Nothing = raiseError {
-      if isChinese then {
-        s"""不支持的数据类型: `${formatType[T]}`, 期望以下数据类型:
-           |${typeExplain[Except]}
-           |""".stripMargin
-      } else {
-        s"""Unsupported data types: `${formatType[T]}`, The following data types are expected:
-           |${typeExplain[Except]}
-           |""".stripMargin
-      }
-    }
-
-    def typeExplain[T: Type](using quotes: Quotes): String = {
-      import quotes.reflect.*
-
-      val typeRepr = TypeRepr.of[T]
-
-      @tailrec
-      def rec(trem: List[TypeRepr], buf: List[TypeRepr]): List[TypeRepr] = {
-        trem match
-          case OrType(t1, t2) :: tail => rec(t1 :: t2 :: tail, buf)
-          case head :: tail           => rec(tail, head :: buf)
-          case Nil                    => buf
-      }
-
-      rec(typeRepr :: Nil, Nil).map(x => "  - " + formatType(using x.asType)).sortBy(_.length).mkString("\n")
-    }
-
-    def formatType[T <: AnyKind](using Type[T])(using quotes: Quotes): String = {
-      import quotes.*
-      import quotes.reflect.*
-      val typeRepr = TypeRepr.of[T]
-
-      val scalaFuncs: List[TypeRepr] = (0 to 22)
-        .map(x => s"scala.Function${x}")
-        .map(fullName => Symbol.classSymbol(fullName))
-        .map(symbol => TypeTree.ref(symbol).tpe)
-        .toList
-
-      typeRepr match
-        case AppliedType(tycon, args) if scalaFuncs.exists(fType => fType =:= tycon) =>
-          if args.length == 1 then {
-            s"() => ${args.last.show}"
-          } else {
-            s"(${args.dropRight(1).map(x => formatType(using x.asType)).mkString(", ")}) => ${args.last.show}"
-          }
-        case other                                                                   => other.show
-    }
-
-    def unsupportConstProp[T: Type](value: String)(using quotes: Quotes, position: MacrosPosition): Nothing =
-      unsupportConstPropBase(value, summon[Type[T]])
-
-    def unsupportConstPropBase(value: String, tpe: Type[?])(using quotes: Quotes, position: MacrosPosition): Nothing =
-      raiseError {
-        import quotes.reflect.*
-
-        val tpeInfo =
-          if (TypeTree.of(using tpe).tpe =:= TypeTree.of[Boolean].tpe) then "Boolean | true | false"
-          else formatType(using tpe)
-        if isChinese then {
-          s"""该属性要求类型: ${tpeInfo}, 实际值为: ${value}""".stripMargin
-        } else {
-          s"""This property requires a type: ${tpeInfo}, actual value is: ${value}""".stripMargin
-        }
-      }
-
-    def raiseError(msg: String)(using quotes: Quotes, position: MacrosPosition): Nothing = {
-      import quotes.reflect.*
-      report.errorAndAbort(msg + s"\n${position}")
-    }
-
-    def logInfo(msg: String)(using quotes: Quotes, position: MacrosPosition): Unit = {
-      import quotes.reflect.*
-      report.info(msg + s"\n${position}")
-    }
-  }
-
-  case class MacrosPosition(file: File, line: Line, name: FullName) {
-    override def toString: String = s"${file.value}:${line.value}"
-  }
-
-  object MacrosPosition {
-
-    given generate(using file: File, line: Line, name: FullName): MacrosPosition =
-      MacrosPosition(file, line, name)
-  }
-
-  given nullToExpr[T <: String | scala.Null]: ToExpr[T] with {
-
-    override def apply(x: T)(using quotes: Quotes): Expr[T] = {
-      import quotes.reflect.*
-      if x == null then Literal(NullConstant()).asExpr.asInstanceOf[Expr[T]]
-      else Literal(StringConstant(x.asInstanceOf[String])).asExpr.asInstanceOf[Expr[T]]
-    }
-  }
-
 }

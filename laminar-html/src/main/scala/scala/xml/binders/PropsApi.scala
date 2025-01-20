@@ -10,13 +10,13 @@ object PropsApi {
   inline def setHtmlPropertyBinder[DomV](
     inline propKey: String,
     inline value: DomV,
-  ): (NamespaceBinding, ReactiveElementBase) => Unit = (*, element) => {
+  ): MetatDataBinder = (*, element) => {
     element.ref.asInstanceOf[js.Dynamic].updateDynamic(propKey)(value.asInstanceOf[js.Any])
   }
 
   inline def removeHtmlPropertyBinder(
     inline propKey: String,
-  ): (NamespaceBinding, ReactiveElementBase) => Unit = (*, element) => {
+  ): MetatDataBinder = (*, element) => {
     element.ref.asInstanceOf[js.Dynamic].updateDynamic(propKey)(js.undefined)
   }
 
@@ -36,12 +36,11 @@ object PropsApi {
   }
 
   // value更新的特殊处理函数
-  def updateWhenKeyIsValue(
-    element: ReactiveElementBase,
-    nextValue: String,
-  ): Unit = {
-    if !getHtmlPropertyRaw[String](element.ref, "value").contains(nextValue) then {
-      setHtmlPropertyRaw(element.ref, "value", nextValue)
+  def valuePropUpdater(source: Source[String]): MetatDataBinder = (*, element) => {
+    ReactiveElement.bindFn(element, source.toObservable) { nextValue =>
+      if !getHtmlPropertyRaw[String](element.ref, "value").contains(nextValue) then {
+        setHtmlPropertyRaw(element.ref, "value", nextValue)
+      }
     }
   }
 }
