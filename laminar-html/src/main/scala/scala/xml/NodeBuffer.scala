@@ -1,8 +1,13 @@
 package scala.xml
 
 import com.raquo.airstream.core.Source
+import com.raquo.ew.{JsArray, JsVector}
+import com.raquo.laminar
+import com.raquo.laminar.modifiers.{RenderableNode, RenderableSeq}
+
 import scala.collection.immutable.Seq
 import scala.collection.{mutable, Iterator}
+import scala.scalajs.js
 
 class NodeBuffer extends Seq[Node] {
   private val underlying: mutable.ArrayBuffer[Node] = mutable.ArrayBuffer.empty
@@ -23,14 +28,17 @@ class NodeBuffer extends Seq[Node] {
   @annotation.targetName("trimText")
   inline def &+(inline text: Text): NodeBuffer = { MacrosTool.trimOrDropTextNode(text, this) }
 
-  @annotation.targetName("addChild")
   def &+[Component: RenderableNode](source: Source[Component]): NodeBuffer = {
     &+(L.child <-- source)
   }
 
-  /** 嵌入的Source[Elem]将会作为子节点插入, */
-  @annotation.targetName("addChildren")
-  def &+[Collection[_]: RenderableSeq, Component: RenderableNode](
+  /** 嵌入的{{{Source[Seq[Elem]]}}}将会作为子节点插入,
+    * 这里必须定义LaminarSeq[A]限定类型,
+    * 不知道为啥String会作为Comparable[String]进入这里,理论上不应该进入该类的
+    */
+  type LaminarSeq[A] = collection.Seq[A] | scala.Array[A] | JsArray[A] | js.Array[A] | JsVector[A] | laminar.Seq[A]
+
+  def &+[Collection[x] <: LaminarSeq[x]: RenderableSeq, Component: RenderableNode](
     source: Source[Collection[Component]],
   ): NodeBuffer = {
     &+(L.children <-- source)
