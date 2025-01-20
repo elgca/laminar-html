@@ -6,7 +6,47 @@ Provides XHTML syntax support for Laminar, creating Laminar nodes through Scala'
 
 Note: This library is incompatible with scala-xml
 
-# 使用
+
+# example
+
+A simple example, for demonstration purposes. Copy and paste the HTML :) . 
+It uses [tabler](https://preview.tabler.io/chat.html), and you can find the original 
+version in the chat.html file under the table template.
+
+Sometimes, the copied HTML may contain errors,
+usually due to the strict XML/XHTML syntax.
+These errors often stem from unclosed tags.
+
+Invalid:
+
+```xhtml
+<br>
+<img src="image.jpg" alt="image">
+<input type="text" name="username">
+```
+
+Valid:
+
+```xhtml
+<br />
+<img src="image.jpg" alt="示例图片" />
+<input type="text" name="username" />
+```
+
+start
+
+```shell
+
+cd example
+sbt ~fastLinkJS
+npm install
+npm run dev
+```
+
+![img_1.png](images/img_1.png)
+
+
+# usage
 
 ```scala
 "io.github.elgca" %%% "laminar-html" % "0.1.6"
@@ -117,3 +157,25 @@ All 'onxxx' will be mapped to 'xxx', providing the following function support:
 
 Supports setting the listener function `Source[ListenerFunction]` through Reactive variables.
 When the listener function changes, the previous listener function will be automatically replaced.
+
+# 0.2.0 Changes [working...]
+
+- Use macro processing for attribute settings, providing more precise type judgment based on attribute keys.
+  - For example: `onclick` only supports event functions, `value` only accepts string, `checked` only accepts `bool`.
+  - Language detection based on Locale.getDefault, currently supporting Chinese and English.
+  - Type judgment has been provided, referring to Laminar's definitions of `HtmlProps/HtmlAttrs/SvgAttrs/ComplexHtmlKeys`
+  - Undefined Html attributes only support string
+- Added registration for mount/unmount events.
+  - For example: `<div mount={(ref:dom.Element) => {chart =  Chart(ref)} } />`
+  - Mount attribute names, Case-insensitive:  mount/onmount
+  - Unmount attribute names, Case-insensitive:  unmount/onunmount
+- Arbitrary attribute names are supported, with values that can be Laminar's Modifier.
+  - For example: `<div laminarMod={L.onClick --> { println("click") }} />`
+- Var/Signal, when inserted as a child mean `child <-- Var`
+  - For example: `val cnt=Var(0); val elem = <div><button onClick={() => cnt.update(_ + 1)} /> Count: {cnt} <div/>`
+
+Example of type error hints:
+
+![img.png](images/img.png)
+
+![img.png](images/img_zh.png)

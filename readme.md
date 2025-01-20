@@ -6,10 +6,45 @@
 
 注意: 该库跟scala-xml是不兼容的
 
+- 0.2.0开始,使用scala3的对xml字面量中的宏进行处理
+
+# example
+
+一个简单的示例, 为了演示如何使用. 复制黏贴html :) .
+使用了[tabler](https://preview.tabler.io/chat.html), 你可以在`table template`的chat.html中找到原始版本.
+
+有时候copy的html会出现错误, 由于严格的xml/xhtml语法,这个错误通常来自未闭合标签.
+
+无效:
+```xhtml
+<br>
+<img src="image.jpg" alt="image">
+<input type="text" name="username">
+```
+
+有效:
+```xhtml
+<br />
+<img src="image.jpg" alt="示例图片" />
+<input type="text" name="username" />
+```
+
+启动示例
+
+```shell
+
+cd example
+sbt ~fastLinkJS
+npm install
+npm run dev
+```
+
+![img_1.png](images/img_1.png)
+
 # 使用
 
 ```scala
-"io.github.elgca" %%% "laminar-html" % "0.1.6"
+"io.github.elgca" %%% "laminar-html" % "0.2.0"
 ```
 
 - 所有的节点都是Laminar的ReactiveElement.Base所以具备跟Laminar的完全互操作性.
@@ -116,3 +151,27 @@ import org.scalajs.dom
   - 等效于 `(e: dom.Event) => f(e.target.files.getOrElse(List.empty))`
 
 支持通过Rx变量的设置监听函数 `Source[ListenerFunction]`,当监听函数变更时候, 会自动替换掉之前的监听函数。
+
+# 0.2.0 变更 [工作中...]
+
+
+- 使用宏处理属性设置,根据属性key提供更精确的类型类型判断
+  - 例如: onclick只能支持事件函数, value只接收string,checked只接收bool
+  - 基于`Locale.getDefault`判断提示语言目前支持: 中文/英文
+  - 已经提供类型判断, 参考Laminar的定义 `HtmlProps/HtmlAttrs/SvgAttrs/ComplexHtmlKeys`
+  - 未定义的dom属性只支持string
+- 增加mount/unmount事件注册
+  - 例如: `<div mount={(ref:dom.Element) => {chart =  Chart(ref)} } />`
+  - mount属性名, 不区分大小写: mount/onmount 
+  - unmount属性名, 不区分大小写: unmount/onunmount
+- 提供任意属性名,其值可以是Laminar的Modifier
+  - 例如: `<div lamianrMod={L.onClick --> { println("click") }} />`
+- Var/Signal在插入将作为`child <-- Var`处理
+  - 例如: `val cnt=Var(0); val elem = <div><button onClick={() => cnt.update(_ + 1)} /> Count: {cnt} <div/>`
+
+
+类型异常提示示例:
+
+![img.png](images/img.png)
+
+![img.png](images/img_zh.png)
