@@ -1,11 +1,9 @@
 package test
 
 import com.raquo.airstream.state.Var
-
-import scala.xml.RenderableNodeImplicit.given
 import com.raquo.laminar.api.*
 
-import scala.xml.binders.Mount
+import scala.xml.RenderableNodeImplicit.given
 val boolVar = Var(false)
 import com.raquo.laminar.api.L
 
@@ -26,7 +24,7 @@ val app = {
     <button onClick={() => value.update(_ + 1)}
             cccc={L.className := "htllo"}
             onmount={() => {}}
-            ggg=""
+            ggg={value.signal.map(_.toString)}
     >
       click me
     </button>
@@ -40,7 +38,23 @@ val app = {
   </div>
 }
 
-val svgHtml = /*CompileCheck*/ {
+val test3 = {
+  L.contentEditable := true
+}
+
+val testVar = {
+  val value     = Var("0")
+  val clickFunc = Var(() => println("click"))
+  L.className := "hwiden"
+  val attr = true
+  <button
+    value={value}
+    contenteditable={"off"}
+    click={clickFunc}
+    />
+}
+
+val svgHtml = CompileCheck {
   <svg
     xmlns="http://www.w3.org/2000/svg"
     width="16"

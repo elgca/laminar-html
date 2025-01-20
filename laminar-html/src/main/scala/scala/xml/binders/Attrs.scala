@@ -1,87 +1,14 @@
 package scala.xml
 package binders
 
-import com.raquo.ew.ewArray
-import org.scalajs.dom
 
-import scala.scalajs.js
-import scala.scalajs.js.JSStringOps.*
-
-object AttrsApi {
-
-  inline def setHtmlAttributeBinder(
-    inline name: String,
-    inline value: String | Null,
-  ): (NamespaceBinding, ReactiveElementBase) => Unit = (binding: NamespaceBinding, element: ReactiveElementBase) => {
-    if value == null || value == "" then element.ref.removeAttribute(name)
-    else element.ref.setAttribute(name, value.asInstanceOf[String])
-  }
-
-  inline def removeHtmlAttributeBinder(
-    inline name: String,
-  ): (NamespaceBinding, ReactiveElementBase) => Unit = (binding: NamespaceBinding, element: ReactiveElementBase) => {
-    element.ref.removeAttribute(name)
-  }
-
-  def getHtmlAttributeRaw(
-    namespaceURI: String | Null,
-    element: dom.Element,
-    attrName: String,
-  ): js.UndefOr[String] = {
-    val domValue: String | Null = element.getAttributeNS(
-      namespaceURI = namespaceURI.asInstanceOf[String],
-      localName = attrName,
-    )
-    if domValue != null then {
-      domValue
-    } else {
-      js.undefined
-    }
-  }
-
-  def setHtmlAttributeRaw(
-    element: dom.Element,
-//    namespaceURI: String | Null,
-    name: String,
-    value: String | Null,
-  ): js.UndefOr[String] = {
-    if value == null then element.removeAttribute(name)
-    else element.setAttribute(name, value.asInstanceOf[String])
-  }
-
-  def setCompositeAttributeBinder(
-    name: String,
-    itemsToAdd: List[String],
-    itemsToRemove: List[String],
-  ): (NamespaceBinding, ReactiveElementBase) => Unit = (binding: NamespaceBinding, element: ReactiveElementBase) => {
-    val separator = " "
-    val domValue  = getHtmlAttributeRaw(null, element.ref, name).map(normalize(_, separator)).getOrElse(Nil)
-    val newItems  = (domValue.filterNot(t => itemsToRemove.contains(t)) ++ itemsToAdd).distinct
-
-    val nextDomValue = newItems.mkString(separator)
-    setHtmlAttributeRaw(element.ref, name, nextDomValue)
-  }
-
-  /** @param items
-    *   non-normalized string with one or more items
-    *   separated by `separator`
-    * @return
-    *   individual values. Note that normalization does NOT
-    *   ensure that the items are unique.
-    */
-  def normalize(items: String, separator: String): List[String] = {
-    if items.isEmpty then {
-      Nil
-    } else {
-      items.jsSplit(separator).ew.filter(_.nonEmpty).asScalaJs.toList
-    }
-  }
-}
 
 object Attrs {
 
   def unapply(e: String): Option[String] = {
-    Some(e).filter(x => allAttrs.contains(x) || complexAttrs(x))
+    allAttrs
+      .find(key => key.equalsIgnoreCase(e))
+      .orElse(Seq(e).find(x => complexAttrs(x)))
   }
 
   def isComposite(attrKey: String): Boolean = {
