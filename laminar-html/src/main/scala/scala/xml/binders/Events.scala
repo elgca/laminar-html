@@ -4,33 +4,42 @@ package binders
 import scala.quoted.*
 
 object Events {
+  given infoType: MacorsMessage.AttrType = MacorsMessage.AttrType("Events")
 
   def unapply(e: String)(using Quotes): Option[String] = {
     if e.startsWith("on") then eventKey.find(key => key.equalsIgnoreCase(e.drop(2)))
     else None
   }
 
-  class EventsMacros(val eventKey: String)(using Quotes) {
+  class EventsMacros(val eventKey: String)(using quotes: Quotes) {
 
-    def addEventListener[T: Type](processor: Expr[T]): Expr[MetatDataBinder] = {
-      import EventsApi.*
-      val conversion: Option[Expr[ToJsListener[T]]] = Expr.summon[ToJsListener[T]]
-      conversion match
-        case Some(funConversion) =>
-          '{
-            EventsApi.addEventListener(${ Expr(eventKey) }, ${ funConversion }.apply(${ processor }))
-          }
-        case None                => MacorsMessage.unsupportEventType[T]
+    import EventsApi.*
+
+    import quotes.reflect.*
+    import quotes.*
+
+    private def block[T: Type](body: => Expr[MetatDataBinder])(using MacrosPosition): Expr[MetatDataBinder] = {
+      if conversion[T].isEmpty then MacorsMessage.unsupportEventType[T]
+      MacorsMessage.showSupportedTypes[ToJsListener.ListenerFuncTypes]
+      body
     }
 
-    def addEventListenerFromSource[V: Type, CC <: Source[V]: Type](processor: Expr[CC]): Expr[MetatDataBinder] = {
-      import EventsApi.*
-      val conversion: Expr[ToJsListener[V]] =
-        Expr.summon[ToJsListener[V]].getOrElse(MacorsMessage.unsupportEventType[V])
+    private def conversion[T: Type](using Quotes): Option[Expr[ToJsListener[T]]] = Expr.summon[ToJsListener[T]]
+
+    def addEventListener[T: Type](processor: Expr[T])(using MacrosPosition): Expr[MetatDataBinder] = block[T] {
       '{
-        EventsApi.addEventListener(${ Expr(eventKey) }, ${ processor }, ${ conversion })
+        EventsApi.addEventListener(${ Expr(eventKey) }, ${ conversion.get }.apply(${ processor }))
       }
     }
+
+    def addEventListenerFromSource[V: Type, CC <: Source[V]: Type](
+      processor: Expr[CC],
+    )(using MacrosPosition): Expr[MetatDataBinder] =
+      block[V] {
+        '{
+          EventsApi.addEventListener(${ Expr(eventKey) }, ${ processor }, ${ conversion.get })
+        }
+      }
   }
 
   object EventsMacros {

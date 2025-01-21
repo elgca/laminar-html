@@ -28,6 +28,12 @@ object EventsApi {
     given file: ToJsListener[List[dom.File] => Unit] = fun => { (ev: dom.Event) =>
       fun(DomApi.getFiles(ev.target.asInstanceOf[dom.Element]).getOrElse(List.empty))
     }
+
+    type ListenerFuncTypes = (() => Unit) | //
+      ((? <: dom.Event) => Unit) | //
+      (String => Unit) | //
+      (Boolean => Unit) | //
+      (List[dom.File] => Unit)
   }
 
   def addEventListener(

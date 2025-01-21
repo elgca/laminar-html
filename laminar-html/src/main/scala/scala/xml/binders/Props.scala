@@ -6,6 +6,7 @@ import scala.util.Try as ScalaTry
 import scala.xml.MacorsMessage.????
 
 object Props {
+  given infoType: MacorsMessage.AttrType = MacorsMessage.AttrType("HtmlProps")
 
   def unapply(e: String): Option[String] = {
     allProps.find(key => key.equalsIgnoreCase(e))
@@ -22,11 +23,24 @@ object Props {
     import quotes.reflect.*
     import quotes.*
 
-    def withConst(
+    def checkType[T: Type]: Boolean = {
+      if TypeRepr.of[T] =:= TypeRepr.of[Text] then true
+      else if TypeRepr.of[T] <:< TypeRepr.of[R] || TypeRepr.of[T] <:< TypeRepr.of[Option[R]] then true
+      else false
+    }
+
+    private def block[T: Type](body: => Expr[MetatDataBinder])(using MacrosPosition): Expr[MetatDataBinder] = {
+      if !checkType[T] then MacorsMessage.expectationType[T, R | Option[R]]
+      MacorsMessage.showSupportedTypes[R | Option[R]]
+      body
+    }
+
+    def withConst[T: Type](
       constStr: String,
-    )(using MacrosPosition): Expr[MetatDataBinder] = {
+    )(using MacrosPosition): Expr[MetatDataBinder] = block[T] {
       ScalaTry(constValueConversion(constStr))
         .map(r => {
+          if !checkType[T] then MacorsMessage.expectationType[T, R | Option[R]]
           '{ PropsApi.setHtmlPropertyBinder(${ Expr(propKey) }, ${ Expr(r) }) }
         })
         .getOrElse(MacorsMessage.unsupportConstProp(constStr)(using propType))
@@ -34,7 +48,7 @@ object Props {
 
     def withExpr[T: Type](
       expr: Expr[T],
-    )(using MacrosPosition): Expr[MetatDataBinder] = {
+    )(using MacrosPosition): Expr[MetatDataBinder] = block[T] {
       expr match {
         case v: Expr[R] @unchecked if TypeRepr.of[T] <:< TypeRepr.of[R]                    => {
           '{ PropsApi.setHtmlPropertyBinder(${ Expr(propKey) }, ${ v }) }
@@ -71,6 +85,21 @@ object Props {
       unapply(e).getOrElse(????)
     }
 
+  }
+
+  def fromSource[T: Type, CC <: Source[T]: Type](
+    name: "value",
+    sourceValue: Expr[CC],
+  )(using quotes: Quotes): Expr[MetatDataBinder] = {
+    import quotes.reflect.*
+    import quotes.*
+    sourceValue match {
+      case sourceStr: Expr[Source[String]] @unchecked if TypeRepr.of[T] <:< TypeRepr.of[String] =>
+        MacorsMessage.showSupportedTypes[String | Option[String] | Source[String]]
+        '{ PropsApi.valuePropUpdater(${ sourceStr }) }
+
+      case _ => MacorsMessage.expectationType[CC, String | Option[String] | Source[String]]
+    }
   }
 
   object StringProp {

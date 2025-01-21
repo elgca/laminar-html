@@ -66,6 +66,20 @@ object AttrsApi {
     setHtmlAttributeRaw(namespaceURI, element.ref, name, nextDomValue)
   }
 
+  def setCompositeAttributeBinderFromSource[V, CC <: Source[V]](
+    namespace: (NamespaceBinding) => Option[String],
+    name: String,
+    sourceValue: CC,
+    normalizer: CompositeNormalize[V],
+  ): MetatDataBinder = (ns: NamespaceBinding, element: ReactiveElementBase) => {
+    var before: List[String] = Nil
+    ReactiveElement.bindFn(element, sourceValue.toObservable) { nextValue =>
+      val addItems = normalizer.apply(nextValue)
+      AttrsApi.setCompositeAttributeBinder(namespace, name, addItems, before).apply(ns, element)
+      before = addItems
+    }
+  }
+
   trait CompositeNormalize[T] {
     def apply(items: T): List[String]
   }

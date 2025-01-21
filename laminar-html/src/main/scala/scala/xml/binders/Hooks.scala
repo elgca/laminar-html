@@ -31,12 +31,15 @@ object Hooks {
     }
 
     val mountHooks: HooksMacros = new HooksMacros:
+      given infoType: MacorsMessage.AttrType = MacorsMessage.AttrType("mountHook")
+
       override def withHooks[T: Type](funExpr: Expr[T])(using Quotes): Expr[MetatDataBinder] = {
         val conversion: Option[Expr[ToMountFunc[T]]] = Expr.summon[ToMountFunc[T]]
 
         val callbackFunc = conversion
           .map(x => '{ ${ x }.apply(${ funExpr }) })
           .getOrElse(MacorsMessage.expectationType[T, MountFuncValid])
+        MacorsMessage.showSupportedTypes[MountFuncValid]
 
         '{ (ns: NamespaceBinding, element: ReactiveElementBase) =>
           L.onMountCallback(${ callbackFunc }).apply(element)
@@ -44,12 +47,15 @@ object Hooks {
       }
 
     val unMountHooks: HooksMacros = new HooksMacros:
+      given infoType: MacorsMessage.AttrType = MacorsMessage.AttrType("unMountHook")
+
       override def withHooks[T: Type](funExpr: Expr[T])(using Quotes): Expr[MetatDataBinder] = {
         val conversion: Option[Expr[ToUnMountFunc[T]]] = Expr.summon[ToUnMountFunc[T]]
 
         val callbackFunc = conversion
           .map(x => '{ ${ x }.apply(${ funExpr }) })
           .getOrElse(MacorsMessage.expectationType[T, UnMountFuncValid])
+        MacorsMessage.showSupportedTypes[UnMountFuncValid]
 
         '{ (ns: NamespaceBinding, element: ReactiveElementBase) =>
           L.onUnmountCallback(${ callbackFunc }).apply(element)

@@ -9,6 +9,8 @@ object MacorsMessage {
   val isChinese =
     Seq(Locale.CHINESE, Locale.CHINA, Locale.SIMPLIFIED_CHINESE, Locale.TRADITIONAL_CHINESE).contains(Locale.getDefault)
 
+  val showInfo = true
+
   def unsupportEventType[T: Type](using quotes: Quotes, position: MacrosPosition): Nothing = raiseError {
     if isChinese then {
       s"""不支持的事件类型 ${formatType[T]}, 受到支持事件函数:
@@ -58,6 +60,19 @@ object MacorsMessage {
       s"""Unsupported data types: `${formatType[T]}`, The following data types are expected:
          |${typeExplain[Except]}
          |""".stripMargin
+    }
+  }
+
+  def showSupportedTypes[Except <: AnyKind](using
+    exceptTpe: Type[Except])(using quotes: Quotes, position: MacrosPosition, attrType: AttrType): Unit = logInfo {
+    if isChinese then {
+      s"""[From:${attrType}]支持的数据类型:
+         |${typeExplain[Except]}
+         |""".stripMargin
+    } else {
+      s"""[From:${attrType}]Supported data types:
+         | ${typeExplain[Except]}
+         | """.stripMargin
     }
   }
 
@@ -152,6 +167,14 @@ object MacorsMessage {
 
   def logInfo(msg: String)(using quotes: Quotes, position: MacrosPosition): Unit = {
     import quotes.reflect.*
-    report.info(msg + s"\n${position}")
+    if showInfo then report.info(msg)
+  }
+
+  case class AttrType(str: String) extends AnyVal {
+    override def toString: String = str
+  }
+
+  object AttrType {
+    given default: AttrType = AttrType("Info")
   }
 }

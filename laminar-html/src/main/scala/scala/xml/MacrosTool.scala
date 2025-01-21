@@ -112,6 +112,21 @@ object MacrosTool {
       .orElse(fromOpt[Long](expr))
   }
 
+  private def constValueIncludeSeq[T](expr: Expr[T])(using quotes: Quotes): Option[Seq[String]] = {
+    import quotes.*
+    def fromSeq[CC[x] <: Iterable[x]](expr: Expr[?])(using FromExpr[CC[String]]): Option[Iterable[String]] = {
+      expr match
+        case x: Expr[CC[String]] @unchecked => x.value
+        case _                              => None
+    }
+    constAnyValue(expr)
+      .map(x => x.toList)
+      .orElse(fromSeq[Seq](expr))
+      .orElse(fromSeq[List](expr))
+      .orElse(fromSeq[Set](expr))
+      .map(_.toSeq)
+  }
+
   private def typeEquals[Base: Type, Target: Type](using quotes: Quotes): Boolean = {
     import quotes.reflect.*
     TypeRepr.of[Base] <:< TypeRepr.of[Target]
@@ -130,19 +145,6 @@ object MacrosTool {
   inline def attributeRx[CC[x] <: Source[x], V](inline x: PrefixedAttribute[CC[V]]): MetaData =
     ${ prefixedAttributeRxMacro('x) }
 
-  def compositeItem[T: Type](valueExpr: Expr[T])(using quotes: Quotes): Expr[List[String]] = {
-    import AttrsApi.*
-    val constStr = constAnyValue(valueExpr)
-    if constStr.isDefined then {
-      val items = constStr.flatten.getOrElse("").split(" ").filter(_.nonEmpty).toList
-      Expr(items)
-    } else {
-      Expr.summon[CompositeNormalize[T]] match
-        case Some(value) => '{ ${ value }.apply(${ valueExpr }) }
-        case None        => MacorsMessage.expectationType[T, CompositeNormalize.CompositeValidTypes]
-    }
-  }
-
   def namespaceFunction(
     namespaceURI: Option[String],
     prefix: Option[String],
@@ -156,18 +158,6 @@ object MacrosTool {
       .getOrElse('{ noNamespace })
   }
 
-  def bindCompositeAttribute(
-    namespaceURI: Option[String],
-    prefix: Option[String],
-    attrKey: String,
-    itemsToAdd: Expr[List[String]],
-    itemsToRemove: Expr[List[String]],
-  )(using quotes: Quotes): Expr[MetatDataBinder] = {
-    val name   = prefix.map(_ + ":" + attrKey).getOrElse(attrKey)
-    val nsFunc = namespaceFunction(namespaceURI, prefix)
-    '{ AttrsApi.setCompositeAttributeBinder(${ nsFunc }, ${ Expr(name) }, ${ itemsToAdd }, ${ itemsToRemove }) }
-  }
-
   def bindAttribute[T: Type](
     namespaceURI: Option[String],
     prefix: Option[String],
@@ -175,14 +165,14 @@ object MacrosTool {
     valueExpr: Expr[T],
   )(using quotes: Quotes): Expr[MetatDataBinder] = {
     import Attrs.AttrMacros
-    val nsFunc = namespaceFunction(namespaceURI, prefix)
-    val name   = prefix.map(_ + ":" + attrKey).getOrElse(attrKey)
-    val macros = AttrMacros.withKey(attrKey)
+    val namespace = namespaceFunction(namespaceURI, prefix)
+    val name      = prefix.map(_ + ":" + attrKey).getOrElse(attrKey)
+    val macros    = AttrMacros.withKey(attrKey)
 
     val constStr: Option[String | Null] = constAnyValue(valueExpr).map(_.orNull)
     constStr match {
-      case Some(value) => macros.withConst(nsFunc, name, value)
-      case None        => macros.withExpr(nsFunc, name, valueExpr)
+      case Some(value) => macros.withConst[T](namespace, name, value)
+      case None        => macros.withExpr(namespace, name, valueExpr)
     }
   }
 
@@ -215,16 +205,16 @@ object MacrosTool {
     valueExpr: Expr[T],
   )(using quotes: Quotes): Expr[MetatDataBinder] = {
     import Attrs.AttrMacros
-    val nsFunc = namespaceFunction(namespaceURI, prefix)
-    val name   = prefix.map(_ + ":" + attrKey).getOrElse(attrKey)
-    val macros = AttrMacros.StringAttr
+    val namespace = namespaceFunction(namespaceURI, prefix)
+    val name      = prefix.map(_ + ":" + attrKey).getOrElse(attrKey)
+    val macros    = AttrMacros.StringAttr(using quotes, MacorsMessage.AttrType("Undefine"))
 
     MacorsMessage.notDefineAttrKey(name, valueExpr)
 
     val constStr: Option[String | Null] = constAnyValue(valueExpr).map(_.orNull)
     constStr match {
-      case Some(value) => macros.withConst(nsFunc, name, value)
-      case None        => macros.withExpr(nsFunc, name, valueExpr)
+      case Some(value) => macros.withConst[T](namespace, name, value)
+      case None        => macros.withExpr(namespace, name, valueExpr)
     }
   }
 
@@ -248,21 +238,19 @@ object MacrosTool {
       case Events.EventsMacros(events: Events.EventsMacros) if prefix.isEmpty => events.addEventListener(valueExpr)
       case Props.PropMacros(macors: Props.PropMacros[?]) if prefix.isEmpty    =>
         constAnyValue(valueExpr) match {
-          case Some(value) => value.map(str => macors.withConst(str)).getOrElse(EmptyBinder)
+          case Some(value) => value.map(str => macors.withConst[T](str)).getOrElse(EmptyBinder)
           case None        => macors.withExpr(valueExpr)
         }
-
-      case Attrs(attrKey) if Attrs.isComposite(attrKey) =>
-        val addItems = compositeItem(valueExpr = valueExpr)
-        bindCompositeAttribute(
-          namespaceURI = namespaceURI,
-          prefix = prefix,
-          attrKey = attrKey,
-          itemsToAdd = addItems,
-          itemsToRemove = Expr(Nil),
-        )
-
-      case Attrs(attrKey) if !Attrs.isComposite(attrKey) =>
+      case Attrs.CompositeAttrMacros(macros: Attrs.CompositeAttrMacros)       =>
+        val attrKey   = macros.attrKey
+        val name      = prefix.map(_ + ":" + attrKey).getOrElse(attrKey)
+        val namespace = namespaceFunction(namespaceURI, prefix)
+        constValueIncludeSeq(valueExpr).fold {
+          macros.withExpr(namespace, name, valueExpr)
+        } {
+          macros.withConst(namespace, name, _)
+        }
+      case Attrs(attrKey) if !Attrs.isComposite(attrKey)                      =>
         bindAttribute(
           namespaceURI = namespaceURI,
           prefix = prefix,
@@ -336,34 +324,20 @@ object MacrosTool {
   )(using quotes: Quotes): Expr[MetatDataBinder] = {
     key match {
       case "value" if prefix.isEmpty                     => {
-        sourceValue match {
-          case sourceStr: Expr[Source[String]] @unchecked if typeEquals[V, String] =>
-            '{ PropsApi.valuePropUpdater(${ sourceStr }) }
-
-          case _ => MacorsMessage.expectationType[CC, Source[String]]
-        }
+        Props.fromSource("value", sourceValue)
       }
       case Events.EventsMacros(events) if prefix.isEmpty =>
         events.addEventListenerFromSource(sourceValue)
 
-      case Attrs(attrKey) if Attrs.isComposite(attrKey) => {
-        '{ (ns: NamespaceBinding, element: ReactiveElementBase) =>
-          var before: List[String] = Nil
-          ReactiveElement.bindFn(element, ${ sourceValue }.toObservable) { nextValue =>
-            val addItems = ${ compositeItem(valueExpr = 'nextValue) }
-            ${
-              val updaterExpr: Expr[MetatDataBinder] = bindCompositeAttribute(
-                namespaceURI = namespaceURI,
-                prefix = prefix,
-                attrKey = attrKey,
-                itemsToAdd = 'addItems,
-                itemsToRemove = 'before,
-              )
-              updaterExpr
-            }.apply(ns, element)
-            before = addItems
-          }
-        }
+      case Attrs.CompositeAttrMacros(macros: Attrs.CompositeAttrMacros) => {
+        val attrKey   = macros.attrKey
+        val name      = prefix.map(_ + ":" + attrKey).getOrElse(attrKey)
+        val namespace = namespaceFunction(namespaceURI, prefix)
+        macros.withExprFromSource(
+          namespace,
+          name,
+          sourceValue,
+        )
       }
 
       case otherKeys => {
