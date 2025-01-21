@@ -29,4 +29,25 @@ object EventsApi {
       fun(DomApi.getFiles(ev.target.asInstanceOf[dom.Element]).getOrElse(List.empty))
     }
   }
+
+  def addEventListener(
+    name: String,
+    listener: JsListener,
+  ): MetatDataBinder = (ns, element) => {
+    element.ref.addEventListener(name, listener)
+  }
+
+  def addEventListener[T](
+    name: String,
+    listener: Source[T],
+    conversion: ToJsListener[T],
+  ): MetatDataBinder = (ns, element) => {
+    var before: Option[JsListener] = None
+    ReactiveElement.bindFn(element, listener.toObservable) { nextValue =>
+      val listener = conversion.apply(nextValue)
+      before.foreach(beforeListener => element.ref.removeEventListener(name, beforeListener))
+      element.ref.addEventListener(name, listener)
+      before = Some(listener)
+    }
+  }
 }

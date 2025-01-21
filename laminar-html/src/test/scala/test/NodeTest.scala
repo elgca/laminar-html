@@ -17,7 +17,7 @@ object NodeTest {
     </div>
   }
 
-  val test2 = CompileCheck {
+  val test2 = {
     val cnt         = Var(0)
     val varString   = Var("test")
     val varSeq      = Var[Seq[String | scala.xml.Elem | Int]](Seq("0"))

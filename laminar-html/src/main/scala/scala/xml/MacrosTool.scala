@@ -2,6 +2,7 @@ package scala.xml
 
 import scala.annotation.tailrec
 import scala.quoted.*
+import scala.xml.MacorsMessage.????
 import scala.xml.binders.*
 
 object MacrosTool {
@@ -129,25 +130,6 @@ object MacrosTool {
   inline def attributeRx[CC[x] <: Source[x], V](inline x: PrefixedAttribute[CC[V]]): MetaData =
     ${ prefixedAttributeRxMacro('x) }
 
-  def bindEvent[T: Type](
-    eventKey: String,
-    addListenerFunction: Expr[T],
-    removeListenerFunction: Expr[Option[T]],
-  )(using quotes: Quotes): Expr[MetatDataBinder] = {
-    import EventsApi.*
-    val conversion: Option[Expr[ToJsListener[T]]] = Expr.summon[ToJsListener[T]]
-    conversion match
-      case Some(funConversion) =>
-        '{ (ns: NamespaceBinding, element: ReactiveElementBase) =>
-          {
-            ${ removeListenerFunction }.foreach(f =>
-              element.ref.removeEventListener(${ Expr(eventKey) }, ${ funConversion }.apply(f)))
-            element.ref.addEventListener(${ Expr(eventKey) }, ${ funConversion }.apply(${ addListenerFunction }))
-          }
-        }
-      case None                => MacorsMessage.unsupportEventType[T]
-  }
-
   def compositeItem[T: Type](valueExpr: Expr[T])(using quotes: Quotes): Expr[List[String]] = {
     import AttrsApi.*
     val constStr = constAnyValue(valueExpr)
@@ -211,9 +193,14 @@ object MacrosTool {
     import quotes.reflect.*
 
     // 这里尝试获取隐式 AttributeBinder["hello", T] , hello是key的常量类型
-    val keyConstType          = ConstantType(StringConstant(key))
-    val binderSymbol          = Symbol.classSymbol(classOf[Attrs.AttrProvider[?]].getName)
-    val clsTpe                = TypeTree.ref(binderSymbol).tpe
+    val keyConstType = ConstantType(StringConstant(key))
+    val clsTpe       = TypeRepr.of[Attrs.AttrProvider[?]] match {
+      case AppliedType(tpe, args) => tpe
+      case None                   => ????
+    }
+
+//    val binderSymbol          = Symbol.classSymbol(classOf[Attrs.AttrProvider[?]].getName.replace("$", "."))
+//    val clsTpe                = TypeTree.ref(binderSymbol).tpe
     val providerType: Type[?] = AppliedType(clsTpe, List(keyConstType)).asType
     Implicits.search(TypeRepr.of(using providerType)) match {
       case iss: ImplicitSearchSuccess => Some(iss.tree.asExpr.asInstanceOf[Expr[Attrs.AttrProvider[?]]])
@@ -245,53 +232,6 @@ object MacrosTool {
     '{ MetaData.EmptyBinder }
   }
 
-  def bindHtmlProp[T: Type](
-    propKey: String,
-    valueExpr: Expr[T],
-  )(using quotes: Quotes): Expr[MetatDataBinder] = {
-    val macors = Props.PropMacros.withKey(propKey)
-    constAnyValue(valueExpr) match {
-      case Some(value) => value.map(str => macors.withConst(str)).getOrElse(EmptyBinder)
-      case None        => macors.withExpr(valueExpr)
-    }
-  }
-
-//  def implicitBaseBinder[T: Type](
-//    namespaceURI: Option[String],
-//    prefix: Option[String],
-//    key: String,
-//    valueExpr: Expr[T],
-//  )(using quotes: Quotes): Option[Expr[MetatDataBinder]] = {
-//    import quotes.*
-//    import quotes.reflect.*
-//
-//    // 这里尝试获取隐式 AttributeBinder["hello", T] , hello是key的常量类型
-//    val keyConstType       = ConstantType(StringConstant(key))
-//    val binderSymbol       = Symbol.classSymbol(classOf[BaseBinder[?, ?]].getName)
-//    val clsTpe             = TypeTree.ref(binderSymbol).tpe
-//    val binderTpe: Type[?] = AppliedType(clsTpe, List(keyConstType, TypeRepr.of[T])).asType
-//
-//    Implicits.search(TypeRepr.of(using binderTpe)) match {
-//      case iss: ImplicitSearchSuccess => {
-//        val binderExpr: Expr[BaseBinder[String, T]] =
-//          iss.tree.asExpr.asInstanceOf[Expr[BaseBinder[String, T]]]
-//
-//        '{ (ns: NamespaceBinding, element: ReactiveElementBase) =>
-//          {
-//            ${ binderExpr }.bindAttr(
-//              element,
-//              None,
-//              None,
-//              ${ Expr(key) },
-//              ${ valueExpr },
-//            )
-//          }
-//        }
-//      }
-//      case isf: ImplicitSearchFailure =>
-//    }
-//  }
-
   def dattributeMacro[T: Type](
     namespaceURI: Option[String],
     prefix: Option[String],
@@ -299,31 +239,18 @@ object MacrosTool {
     valueExpr: Expr[T],
   )(using quotes: Quotes): Expr[MetatDataBinder] = {
     // 在xhtml中嵌入lamianr的Modifier
-    Expr.summon[BaseBinder[String, T]] match {
-      case Some(binder) =>
-        return '{ (ns: NamespaceBinding, element: ReactiveElementBase) =>
-          {
-            ${ binder }.bindAttr(
-              element,
-              None,
-              None,
-              ${ Expr(key) },
-              ${ valueExpr },
-            )
-          }
-        }
-      case None         =>
-    }
+    LaminarMod.LaminarModMacros(valueExpr) match
+      case Some(value) => return value
+      case None        =>
 
     key match {
-      case Hooks.HooksMacros(hooks) if prefix.isEmpty => hooks.withHooks(valueExpr)
-      case Events(eventKey) if prefix.isEmpty         => bindEvent(eventKey, valueExpr, Expr(None))
-
-      case Props(propKey) if prefix.isEmpty =>
-        bindHtmlProp(
-          propKey = propKey,
-          valueExpr = valueExpr,
-        )
+      case Hooks.HooksMacros(hooks) if prefix.isEmpty                         => hooks.withHooks(valueExpr)
+      case Events.EventsMacros(events: Events.EventsMacros) if prefix.isEmpty => events.addEventListener(valueExpr)
+      case Props.PropMacros(macors: Props.PropMacros[?]) if prefix.isEmpty    =>
+        constAnyValue(valueExpr) match {
+          case Some(value) => value.map(str => macors.withConst(str)).getOrElse(EmptyBinder)
+          case None        => macors.withExpr(valueExpr)
+        }
 
       case Attrs(attrKey) if Attrs.isComposite(attrKey) =>
         val addItems = compositeItem(valueExpr = valueExpr)
@@ -408,7 +335,7 @@ object MacrosTool {
     sourceValue: Expr[CC],
   )(using quotes: Quotes): Expr[MetatDataBinder] = {
     key match {
-      case "value" if prefix.isEmpty          => {
+      case "value" if prefix.isEmpty                     => {
         sourceValue match {
           case sourceStr: Expr[Source[String]] @unchecked if typeEquals[V, String] =>
             '{ PropsApi.valuePropUpdater(${ sourceStr }) }
@@ -416,17 +343,8 @@ object MacrosTool {
           case _ => MacorsMessage.expectationType[CC, Source[String]]
         }
       }
-      case Events(eventKey) if prefix.isEmpty => {
-        '{ (ns: NamespaceBinding, element: ReactiveElementBase) =>
-          var before: Option[V] = None
-          ReactiveElement.bindFn(element, ${ sourceValue }.toObservable) { nextValue =>
-            ${
-              bindEvent(eventKey, 'nextValue, 'before)
-            }.apply(ns, element)
-            before = Some(nextValue)
-          }
-        }
-      }
+      case Events.EventsMacros(events) if prefix.isEmpty =>
+        events.addEventListenerFromSource(sourceValue)
 
       case Attrs(attrKey) if Attrs.isComposite(attrKey) => {
         '{ (ns: NamespaceBinding, element: ReactiveElementBase) =>

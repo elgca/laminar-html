@@ -132,7 +132,7 @@ import org.scalajs.dom
         value = {zipVar}
         input = {(e: String) => zipVar.set(e.data.filter(_ != 'a'))}
       />
-      <button click={() => switch.set(!switch.now())}>Change</button>
+      <button onclick={() => switch.set(!switch.now())}>Change</button>
       {switchElement}
     </div>
   }

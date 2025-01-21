@@ -1,12 +1,45 @@
 package scala.xml
 package binders
 
-object Events {
-  def key(e: String): Option[String] = unapply(e)
+import scala.quoted.*
 
-  def unapply(e: String): Option[String] = {
+object Events {
+
+  def unapply(e: String)(using Quotes): Option[String] = {
     if e.startsWith("on") then eventKey.find(key => key.equalsIgnoreCase(e.drop(2)))
     else None
+  }
+
+  class EventsMacros(val eventKey: String)(using Quotes) {
+
+    def addEventListener[T: Type](processor: Expr[T]): Expr[MetatDataBinder] = {
+      import EventsApi.*
+      val conversion: Option[Expr[ToJsListener[T]]] = Expr.summon[ToJsListener[T]]
+      conversion match
+        case Some(funConversion) =>
+          '{
+            EventsApi.addEventListener(${ Expr(eventKey) }, ${ funConversion }.apply(${ processor }))
+          }
+        case None                => MacorsMessage.unsupportEventType[T]
+    }
+
+    def addEventListenerFromSource[V: Type, CC <: Source[V]: Type](processor: Expr[CC]): Expr[MetatDataBinder] = {
+      import EventsApi.*
+      val conversion: Expr[ToJsListener[V]] =
+        Expr.summon[ToJsListener[V]].getOrElse(MacorsMessage.unsupportEventType[V])
+      '{
+        EventsApi.addEventListener(${ Expr(eventKey) }, ${ processor }, ${ conversion })
+      }
+    }
+  }
+
+  object EventsMacros {
+
+    def unapply(e: String)(using Quotes): Option[EventsMacros] = {
+      Events.unapply(e).map { key =>
+        EventsMacros(key)
+      }
+    }
   }
 
   val eventKey = Set(
