@@ -66,7 +66,7 @@ val xmlElem = {
     <h1 class="title">Hello World</h1>
     <button 
       class="btn btn-primary"
-      click={() => count.update(_ + 1) }
+      onclick={() => count.update(_ + 1) }
     >
       <!-- 事件函数会调用dom的addEventListener添加事件监听-->
       <!-- 参考 https://developer.mozilla.org/zh-CN/docs/Web/API/Element/click_event-->

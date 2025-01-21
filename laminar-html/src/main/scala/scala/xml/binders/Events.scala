@@ -5,8 +5,8 @@ object Events {
   def key(e: String): Option[String] = unapply(e)
 
   def unapply(e: String): Option[String] = {
-    val inputKey = if e.startsWith("on") then e.drop(2) else e
-    eventKey.find(key => key.equalsIgnoreCase(inputKey))
+    if e.startsWith("on") then eventKey.find(key => key.equalsIgnoreCase(e.drop(2)))
+    else None
   }
 
   val eventKey = Set(

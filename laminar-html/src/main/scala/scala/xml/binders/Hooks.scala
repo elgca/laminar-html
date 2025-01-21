@@ -7,13 +7,12 @@ import scala.xml.MacorsMessage.????
 object Hooks {
 
   def unapply(e: String): Option[String] = {
-    val inputKey = if e.startsWith("on") then e.drop(2) else e
-    hooks.keys.find(key => key.equalsIgnoreCase(inputKey))
+    hooks.keys.find(key => key.equalsIgnoreCase(e))
   }
 
   lazy val hooks = Map(
-    "unmount" -> HooksMacros.unMountHooks,
-    "mount"   -> HooksMacros.mountHooks,
+    "onunmount" -> HooksMacros.unMountHooks,
+    "onmount"   -> HooksMacros.mountHooks,
   )
 
   trait HooksMacros {

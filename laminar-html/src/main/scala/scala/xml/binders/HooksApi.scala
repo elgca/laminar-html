@@ -1,7 +1,6 @@
 package scala.xml
 package binders
 
-import com.raquo.laminar.api.L.MountContext
 import org.scalajs.dom
 
 object HooksApi {

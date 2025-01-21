@@ -1,11 +1,12 @@
 package scala.xml
 
-import com.raquo.laminar
-import com.raquo.laminar.modifiers.RenderableNode
+import com.raquo.ew
+import com.raquo.ew.{JsArray, JsVector}
 
-import scala.annotation.implicitNotFound
+import scala.annotation.{implicitNotFound, nowarn}
 import scala.collection.immutable.Seq
 import scala.collection.{mutable, Iterator}
+import scala.scalajs.js
 
 class NodeBuffer extends Seq[Node] {
   private val underlying: mutable.ArrayBuffer[Node] = mutable.ArrayBuffer.empty
@@ -15,6 +16,12 @@ class NodeBuffer extends Seq[Node] {
   override protected def className: String          = "NodeBuffer"
 
   import NodeBuffer.*
+  import NodeBuffer.laminarRenderable
+
+  def &+(component: Node): NodeBuffer = {
+    underlying.addOne(component)
+    this
+  }
 
   def &+[Component: AcceptableNode](component: Component): NodeBuffer = {
     underlying.addOne(summon[AcceptableNode[Component]].asNode(component))
@@ -28,48 +35,112 @@ class NodeBuffer extends Seq[Node] {
     this
   }
 
+  // 支持 Source[xxx]
+  def &+[Component: RenderableNode](source: Source[Component]): NodeBuffer = {
+    &+(L.child <-- source)
+    this
+  }
+
+  def &+[Component <: ChildNodeBase](source: Source[Component]): NodeBuffer = {
+    &+(L.child <-- source)
+    this
+  }
+
+  // 为了解决string的问题, string被视作Comparable[_]会导致进入该分支,这里强制限定类型范围,但是应该进入
+  // com.raquo.laminar.modifiers.RenderableSeq默认的所有类型都在这里了
+  type LaminarRenderableSeqType[A] = collection.Seq[A] | //
+    scala.Array[A] | //
+    js.Array[A] | //
+    ew.JsArray[A] | //
+    ew.JsVector[A] | //
+    LaminarSeq[A]
+
+  def &+[Collection[x] <: LaminarRenderableSeqType[x]: LaminarRenderableSeq, Component: RenderableNode](
+    source: Source[Collection[Component]]): NodeBuffer = {
+    &+(L.children <-- source)
+    this
+  }
+
+  def &+[Collection[x] <: LaminarRenderableSeqType[x]: LaminarRenderableSeq](
+    source: Source[Collection[ChildNodeBase]]): NodeBuffer = {
+    &+(L.children <-- source)
+    this
+  }
+
   // 清理掉Text为空的节点或者进行trim操作
   @annotation.targetName("trimText")
   inline def &+(inline text: Text): NodeBuffer = { MacrosTool.trimOrDropTextNode(text, this) }
 
-  // 忽略空节点
+  // 忽略空节点, 本来想用inline 直接忽略相关代码
+  // 但是从逻辑上, 这样是被允许的 `<div> {println("init this div")} </div>`
   def &+(o: scala.Null | Unit): NodeBuffer = { this }
-
-//  // 兼容Laminar，我想把Elem继承ReactiveElementBase,但是失败了,无法完全应用Laminar属性
-//  // 只有 ReactiveSvgElement 和 ReactiveHtmlElement 可以完全使用Lamianr的Modify
-//  def &+(o: Elem): NodeBuffer = {
-//    underlying.addOne(o.reactiveElement)
-//    this
-//  }
-
-//  def &+(o: AnyNode): NodeBuffer = {
-//    underlying.addOne(o.asInstanceOf[Node])
-//    this
-//  }
 }
 
 object NodeBuffer {
+  import Node.*
 
-  @implicitNotFound("")
+  // laminar RenderableNode
+  given laminarRenderable[Component: RenderableNode]: LaminarRenderableNode[Component] =
+    new LaminarRenderableNode[Component] {
+      override def asNode(value: Component): ChildNodeBase = summon[RenderableNode[Component]].asNode(value).value
+
+      override def asNodeSeq(values: LaminarSeq[Component]): LaminarSeq[ChildNodeBase] = values.map(asNode)
+
+      override def asNodeOption(value: Option[Component]): Option[ChildNodeBase] = value.map(asNode)
+    }
+
+  // RenderableNode 所有可渲染节点, 应该是一个 ChildNode
+  @implicitNotFound("无法提供转换 RenderableNode[${Component}]")
+  trait RenderableNode[Component] {
+    def asNode(value: Component): ChildNode
+  }
+
+  object RenderableNode {
+    def AsTextNode[V](): RenderableNode[V] = (value: V) => new TextNode(value.toString)
+    type TextTypes = Boolean | Byte | Short | Int | Long | Float | Double | Char | String | java.lang.Number
+    given asText[T <: TextTypes]: RenderableNode[T]           = AsTextNode()
+    given lmainarChild[T <: ChildNodeBase]: RenderableNode[T] = (v: T) => v
+    given elemAsNode: RenderableNode[Elem]                    = (oc: Elem) => oc.reactiveElement
+
+    given unionAll[T <: TextTypes | Elem | ChildNode | ChildNodeBase]: RenderableNode[T] = {
+      case e: Elem            => elemAsNode.asNode(e)
+      case mod: ChildNodeBase => lmainarChild.asNode(mod)
+      case node: ChildNode    => node
+      case o                  => new TextNode(o.toString)
+    }
+  }
+
+  // 所有可以被接受的节点, 不能用于 Source[V]中
   trait AcceptableNode[Component] {
     def asNode(value: Component): Node
   }
 
   object AcceptableNode {
-    def AsTextNode[V](): AcceptableNode[V] = (value: V) => new TextNode(value.toString)
-    type TextTypes = Boolean | Byte | Short | Int | Long | Float | Double | Char | String | java.lang.Number
-    given asText[T <: TextTypes]: AcceptableNode[T]  = AsTextNode()
-    given asAnyNode[T <: LAnyMod]: AcceptableNode[T] = (v: T) => v.asInstanceOf[LModBase]
-    given elemAsNode: AcceptableNode[Elem]           = (oc: Elem) => oc.reactiveElement
+    given renderable[C: RenderableNode]: AcceptableNode[C] = (c: C) => summon[RenderableNode[C]].asNode(c)
+    given laminarMod[C <: LAnyMod]: AcceptableNode[C]      = (v: C) => Node.mod(v)
 
+    import scala.compiletime.*
+    import scala.deriving.Mirror
+
+    // support Tuple, 我应该使用推导,还是 UnionType?
+    @nowarn
+    inline given tupleAsNode[T <: Tuple](using m: Mirror.Of[T]): AcceptableNode[T] = (tuple: T) => {
+      val nodeSeqs = toNodeVectors[m.MirroredElemTypes](tuple)
+      Node(nodeSeqs)
+    }
+
+    private inline def toNodeVectors[Mets](
+      p: Product,
+      i: Int = 0,
+      res: Vector[Node] = Vector.empty,
+    ): Vector[Node] = {
+      inline erasedValue[Mets] match
+        case _: EmptyTuple        => res
+        case _: (met *: metsTail) =>
+          val acceptable = summonInline[AcceptableNode[met]]
+          val node       = acceptable.asNode(p.productElement(i).asInstanceOf[met])
+          val nextRes    = res.appended(node)
+          toNodeVectors[metsTail](p, i + 1, nextRes)
+    }
   }
-}
-
-object RenderableNodeImplicit {
-  given int: RenderableNode[Int]         = RenderableNode(x => new TextNode(x.toString))
-  given string: RenderableNode[String]   = RenderableNode(x => new TextNode(x.toString))
-  given double: RenderableNode[Double]   = RenderableNode(x => new TextNode(x.toString))
-  given boolean: RenderableNode[Boolean] = RenderableNode(x => new TextNode(x.toString))
-
-  trait Node
 }

@@ -61,7 +61,7 @@ val xmlElem = {
     <h1 class="title">Hello World</h1>
     <button 
       class="btn btn-primary"
-      click={() => count.update(_ + 1) }
+      onclick={() => count.update(_ + 1) }
     >
       <!-- 事件函数会调用dom的addEventListener添加事件监听-->
       <!-- 参考 https://developer.mozilla.org/zh-CN/docs/Web/API/Element/click_event-->
@@ -127,7 +127,7 @@ import org.scalajs.dom
         value = {zipVar}
         input = {(e: String) => zipVar.set(e.data.filter(_ != 'a'))}
       />
-      <button click={() => switch.set(!switch.now())}>Change</button>
+      <button onclick={() => switch.set(!switch.now())}>Change</button>
       {switchElement}
     </div>
   }
@@ -139,7 +139,7 @@ import org.scalajs.dom
 ## 事件函数
 
 事件通过`element.addEventListener`绑定, 这意味着重复设置监听器都会生效。
-所有'onxxx'将被映射为 'xxx' ,提供下列函数支持:
+所有'onxxx'将被映射为 'xxx'的事件 ,提供下列函数支持:
 
 - `() => Unit`
 - `(e: Ev <: dom.Event) => Unit`
@@ -165,7 +165,7 @@ import org.scalajs.dom
   - mount属性名, 不区分大小写: mount/onmount 
   - unmount属性名, 不区分大小写: unmount/onunmount
 - 提供任意属性名,其值可以是Laminar的Modifier
-  - 例如: `<div lamianrMod={L.onClick --> { println("click") }} />`
+  - 例如: `<div lamianrMod={L.onClick --> { println("onclick") }} />`
 - Var/Signal在插入将作为`child <-- Var`处理
   - 例如: `val cnt=Var(0); val elem = <div><button onClick={() => cnt.update(_ + 1)} /> Count: {cnt} <div/>`
 

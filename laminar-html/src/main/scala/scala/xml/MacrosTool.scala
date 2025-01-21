@@ -2,7 +2,6 @@ package scala.xml
 
 import scala.annotation.tailrec
 import scala.quoted.*
-import scala.xml.MacorsMessage.????
 import scala.xml.binders.*
 
 object MacrosTool {

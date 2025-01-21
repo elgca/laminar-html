@@ -1,32 +1,31 @@
 package test
 
 import com.raquo.airstream.state.Var
-import com.raquo.laminar.api.*
-import com.raquo.laminar.nodes.ReactiveElement
+import com.raquo.laminar.api.eventPropToProcessor
 
 import scala.scalajs.js
-import scala.xml.RenderableNodeImplicit.given
 val boolVar = Var(false)
 import com.raquo.laminar.api.L
+import com.raquo.laminar.api.features.unitArrows
 
 val app = {
   val value    = Var(0)
   val hidden   = true
   val dsfdsfsd = Option("true")
   <div class="test test1">
-    <button onClick={() => value.update(_ + 1)}
+    <button onclick={() => value.update(_ + 1)}
             cccc={L.className := "htllo"}
             onmount={() => {}}
             ggg={value.signal.map(_.toString)}
     >
       click me
     </button>
-    <button click={(str: Boolean) => println(str)}
+    <button onclick={(str: Boolean) => println(str)}
       hidden={hidden}
     >
       click me
     </button>
-    <p content={dsfdsfsd}>count :{value}</p>
+    <p content={dsfdsfsd}>count :{Seq("a")}</p>
     <test width ="300"></test>
   </div>
 }
@@ -44,8 +43,10 @@ val testVar = {
     value={value}
     minLength ="1"
     contenteditable={Some("true")}
-    click={clickFunc}
-    />
+    onclick={clickFunc}
+    >
+  {L.onClick --> println("click-------->")}
+  </button>
 }
 
 val svgHtml = {
@@ -63,12 +64,23 @@ val svgHtml = {
   </svg>
 }
 
-val subChild = CompileCheck {
-  val value     = Var("xxx")
-  val value2    = Var(Seq("xxx"))
-  val c: String = ""
+val subChild = {
   <div>
-    {value}
-    {value2}
+    {(<br />)}
   </div>
+
+//  import com.raquo.laminar.api.*
+//
+//  iterableOnce(js.Array("items"))
+//  val seq = Seq("a", L.div(), "c")
+//  val seqCh = Var("")
+//  L.div(
+//    seq,
+//  )
+//  buf.&+(value)
+//  val c: String = ""
+//  <div>
+//    {value}
+//    {value2}
+//  </div>
 }

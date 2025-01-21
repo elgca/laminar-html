@@ -1,6 +1,5 @@
 package scala.xml
 
-import com.raquo.laminar.tags.{HtmlTag, SvgTag, Tag}
 import org.scalajs.dom
 import org.scalajs.dom.svg.Element
 
@@ -37,7 +36,7 @@ object Elem {
   inline given Conversion[Elem, ReactiveElementBase] with
     inline def apply(elem: Elem): ReactiveElementBase = elem.reactiveElement
 
-  given int: RenderableNode[Elem] = RenderableNode(x => x.reactiveElement)
+  given int: LaminarRenderableNode[Elem] = LaminarRenderableNode(x => x.reactiveElement)
 
   class ElemTag(
     val name: String,
