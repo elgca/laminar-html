@@ -2,10 +2,13 @@ package scala.xml
 
 import com.raquo.laminar.keys.Key
 import com.raquo.laminar.modifiers.Modifier
-import com.raquo.laminar.nodes.ReactiveElement
+import com.raquo.laminar.nodes.{ChildNode, ReactiveElement}
 import com.raquo.laminar.tags.Tag
 import org.scalajs.dom
 import org.scalajs.dom.Element
+
+type LModBase = Modifier.Base
+type LAnyMod  = Modifier[? <: ReactiveElement.Base]
 
 type Node    = Modifier.Base
 type AnyNode = Modifier[? <: ReactiveElement.Base]
@@ -23,7 +26,8 @@ type RenderableSeq[-Collection[_]] = com.raquo.laminar.modifiers.RenderableSeq[C
 val DomApi          = com.raquo.laminar.DomApi
 val ReactiveElement = com.raquo.laminar.nodes.ReactiveElement
 val L               = com.raquo.laminar.api.L
-type Source[+A] = com.raquo.airstream.core.Source[A]
+type Source[+A]    = com.raquo.airstream.core.Source[A]
+type ChildNodeBase = ChildNode.Base
 
 class ElementNodeBase(
   override val tag: Tag[ReactiveElement[Element]],

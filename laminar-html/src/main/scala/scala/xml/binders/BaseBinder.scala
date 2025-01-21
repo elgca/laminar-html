@@ -23,9 +23,9 @@ trait BaseBinder[T <: String, DomValue] {
 object BaseBinder {
 
   // Laminar Mod
-  given htmlModBinder[Ref <: AnyNode]: BaseBinder[String, Ref] = { (element, namespaceURI, prefix, key, mod) =>
+  given htmlModBinder[Ref <: LAnyMod]: BaseBinder[String, Ref] = { (element, namespaceURI, prefix, key, mod) =>
     mod match
       case null  =>
-      case other => other.asInstanceOf[Node].apply(element)
+      case other => other.asInstanceOf[LModBase].apply(element)
   }
 }
