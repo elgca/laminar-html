@@ -205,16 +205,27 @@ object MacrosTool {
     valueExpr: Expr[T],
   )(using quotes: Quotes): Expr[MetatDataBinder] = {
     import Attrs.AttrMacros
-    val namespace = namespaceFunction(namespaceURI, prefix)
-    val name      = prefix.map(_ + ":" + attrKey).getOrElse(attrKey)
-    val macros    = AttrMacros.StringAttr(using quotes, MacorsMessage.AttrType("Undefine"))
-
+    given attType: MacorsMessage.AttrType = MacorsMessage.AttrType("Undefine")
+    val namespace                         = namespaceFunction(namespaceURI, prefix)
+    val name                              = prefix.map(_ + ":" + attrKey).getOrElse(attrKey)
+    val attrMacros: AttrMacros[String]    = AttrMacros.StringAttr
+    val eventMacros: Events.EventsMacros  = Events.EventsMacros(attrKey)
     MacorsMessage.notDefineAttrKey(name, valueExpr)
 
-    val constStr: Option[String | Null] = constAnyValue(valueExpr).map(_.orNull)
-    constStr match {
-      case Some(value) => macros.withConst[T](namespace, name, value)
-      case None        => macros.withExpr(namespace, name, valueExpr)
+    if attrMacros.checkType[T] then {
+      val macros                          = attrMacros
+      val constStr: Option[String | Null] = constAnyValue(valueExpr).map(_.orNull)
+      constStr match {
+        case Some(value) => macros.withConst[T](namespace, name, value)
+        case None        => macros.withExpr(namespace, name, valueExpr)
+      }
+    } else if eventMacros.checkType[T] then {
+      eventMacros.addEventListener(valueExpr)
+    } else {
+      MacorsMessage.expectationType[
+        T,
+        String | Option[String] | Source[String] | EventsApi.ToJsListener.ListenerFuncTypes,
+      ]
     }
   }
 

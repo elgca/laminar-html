@@ -11,7 +11,11 @@ object MacorsMessage {
 
   val ShowTypeHints = System.getProperty("show_type_hints") != "false"
 
-  def unsupportEventType[T: Type](using quotes: Quotes, position: MacrosPosition): Nothing = raiseError {
+  def unsupportEventType[T: Type](using
+    quotes: Quotes,
+    position: MacrosPosition,
+    attrType: AttrType,
+  ): Nothing = raiseError {
     if isChinese then {
       s"""不支持的事件类型 ${formatType[T]}, 受到支持事件函数:
          |  - () => Unit
@@ -31,21 +35,31 @@ object MacorsMessage {
     }
   }
 
-  def notDefineAttrKey[T: Type](key: String, expr: Expr[T])(using quotes: Quotes, position: MacrosPosition): Unit = {
-//    logInfo {
-//      if isChinese then s"""未定义的属性 ${key} = ${exprShow(expr)}, 类型: ${formatType[T]}"""
-//      else s"""Not Define Attribute Key ${key} = ${exprShow(expr)}, type: ${formatType[T]}"""
-//    }
+  def notDefineAttrKey[T: Type](key: String, expr: Expr[T])(using
+    quotes: Quotes,
+    position: MacrosPosition,
+    attrType: AttrType,
+  ): Unit = {
+    logInfo {
+      if isChinese then s"""未定义的属性 ${key} = ${exprShow(expr)}, 类型: ${formatType[T]}"""
+      else s"""Not Define Attribute Key ${key} = ${exprShow(expr)}, type: ${formatType[T]}"""
+    }
   }
 
-  def ????(using quotes: Quotes, position: MacrosPosition): Nothing = raiseError {
+  def ????(using
+    quotes: Quotes,
+    position: MacrosPosition,
+    attrType: AttrType,
+  ): Nothing = raiseError {
     if isChinese then s"还未实现功能/非法分支"
     else s"an implementation is missing"
   }
 
   def expectationType[T <: AnyKind, Except <: AnyKind](using tpe: Type[T], exceptTpe: Type[Except])(using
     quotes: Quotes,
-    position: MacrosPosition): Nothing = raiseError {
+    position: MacrosPosition,
+    attrType: AttrType,
+  ): Nothing = raiseError {
     if isChinese then {
       s"""不支持的数据类型: `${formatType[T]}`, 期望以下数据类型:
          |${typeExplain[Except]}
@@ -58,7 +72,12 @@ object MacorsMessage {
   }
 
   def showSupportedTypes[Except <: AnyKind](using
-    exceptTpe: Type[Except])(using quotes: Quotes, position: MacrosPosition, attrType: AttrType): Unit = logInfo {
+    exceptTpe: Type[Except],
+  )(using
+    quotes: Quotes,
+    position: MacrosPosition,
+    attrType: AttrType,
+  ): Unit = logInfo {
     if isChinese then {
       s"""[From:${attrType}]支持的数据类型:
          |${typeExplain[Except]}
@@ -152,8 +171,11 @@ object MacorsMessage {
     TypeRepr.of[T].show(using printer)
   }
 
-  def unsupportConstProp[T <: AnyKind](value: String | scala.Null)(using
-    tpe: Type[T])(using quotes: Quotes, position: MacrosPosition): Nothing =
+  def unsupportConstProp[T <: AnyKind](value: String | scala.Null)(using tpe: Type[T])(using
+    quotes: Quotes,
+    position: MacrosPosition,
+    attrType: AttrType,
+  ): Nothing =
     raiseError {
       import quotes.reflect.*
 
@@ -167,9 +189,13 @@ object MacorsMessage {
       }
     }
 
-  def raiseError(msg: String)(using quotes: Quotes, position: MacrosPosition): Nothing = {
+  def raiseError(msg: String)(using
+    quotes: Quotes,
+    position: MacrosPosition,
+    attrType: AttrType,
+  ): Nothing = {
     import quotes.reflect.*
-    report.errorAndAbort(msg + s"\n${position}")
+    report.errorAndAbort(s"[From:${attrType}]" + msg + s"\n${position}")
   }
 
   def logInfo(msg: String)(using quotes: Quotes, position: MacrosPosition): Unit = {

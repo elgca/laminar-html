@@ -72,8 +72,7 @@ val subChild = {
   <div>
     {(<br />)}
   </div>
-  
-L.renderOnDomContentLoaded()
+
 //  import com.raquo.laminar.api.*
 //
 //  iterableOnce(js.Array("items"))

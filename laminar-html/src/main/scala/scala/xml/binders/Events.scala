@@ -1,8 +1,6 @@
 package scala.xml
 package binders
 
-import org.scalajs.dom
-
 import scala.quoted.*
 
 object Events {
@@ -19,8 +17,9 @@ object Events {
 
     import EventsApi.*
 
-    import quotes.reflect.*
-    import quotes.*
+    def checkType[T: Type]: Boolean = {
+      conversion[T].isDefined
+    }
 
     private def block[T: Type](body: => Expr[MetatDataBinder])(using MacrosPosition): Expr[MetatDataBinder] = {
       if conversion[T].isEmpty then MacorsMessage.unsupportEventType[T]

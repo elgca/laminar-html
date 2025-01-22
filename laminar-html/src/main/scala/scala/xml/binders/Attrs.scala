@@ -26,7 +26,7 @@ object Attrs {
   )(using
     quotes: Quotes,
     propToExpr: ToExpr[R],
-    propType: Type[R],
+    val propType: Type[R],
   )(using AttrType) {
     def this(
       constFormat: String | scala.Null => String | scala.Null,
