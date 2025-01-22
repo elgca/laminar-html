@@ -173,7 +173,10 @@ object MacrosTool {
     val namespace  = namespaceFunction(namespaceURI, prefix)
     val constValue = constValueIncludeSeq(valueExpr).map(_.mkString(" "))
 
-    val binderExpr: Expr[MetatDataBinder] = (prefix, attrKey, Type.of[T]) match {
+    //如果是常量,优先使用String匹配
+    val matchTpe = constValue.fold(Type.of[T])(_ => Type.of[String])
+
+    val binderExpr: Expr[MetatDataBinder] = (prefix, attrKey, matchTpe) match {
       case AttrMacrosDef(name, macros) =>
         constValue.fold {
           macros.withExpr(namespace, prefix, name, valueExpr)
@@ -203,7 +206,10 @@ object MacrosTool {
     val namespace    = namespaceFunction(namespaceURI, prefix)
     val constValue   = constValueIncludeSeq(valueExpr).map(_.mkString(" "))
 
-    val binderExpr: Expr[MetatDataBinder] = (prefix, attrKey, Type.of[T]) match {
+    //如果是常量,优先使用String匹配
+    val matchTpe = constValue.fold(Type.of[T])(_ => Type.of[String])
+
+    val binderExpr: Expr[MetatDataBinder] = (prefix, attrKey, matchTpe) match {
       case AttrMacrosDef(name, macros) =>
         constValue.fold {
           macros.withExpr(namespace, prefix, name, valueExpr)

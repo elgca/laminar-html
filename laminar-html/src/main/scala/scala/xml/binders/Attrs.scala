@@ -21,7 +21,7 @@ object Attrs {
           .filter(_ => prefix == pfx)
           .map(key => key -> factory(quotes))
       }
-      .find(x => x._2.checkType(using tpe))
+      .headOrMatch(_._2.checkType(using tpe))
   }
 
   class HtmlAttrMacros[R](

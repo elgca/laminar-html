@@ -40,8 +40,9 @@ val testVar = {
   val attr = true
   <button
     value={value}
+    guo ="???"
     minLength ="1"
-    contenteditable={Some(true)}
+    width="121"
     onclick={clickFunc}
     >
   {L.onClick --> println("click-------->")}

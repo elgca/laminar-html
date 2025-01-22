@@ -15,13 +15,13 @@ object Events {
     tuple: (Option[String], String, Type[T]),
   )(using quotes: Quotes): Option[(String, AttrMacrosDef[?])] = {
     val (_: Option[String], attrKey: String, tpe: Type[T]) = tuple
+
     eventsDefine.value.iterator
       .flatMap { case (name, attr, factory) =>
         attr(attrKey)
           .map(key => key -> factory(quotes))
       }
-      .find(_ => true)
-//      .find(x => x._2.checkType(using tpe))
+      .headOrMatch(_._2.checkType(using tpe))
   }
 
   import EventsApi.*

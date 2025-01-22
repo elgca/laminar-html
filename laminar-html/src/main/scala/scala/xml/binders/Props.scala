@@ -19,7 +19,7 @@ object Props {
           .filter(_ => prefix.isEmpty)
           .map(* => propName -> factory(quotes))
       }
-      .find(x => x._2.checkType(using tpe))
+      .headOrMatch(_._2.checkType(using tpe))
   }
 
   class PropMacros[R](
