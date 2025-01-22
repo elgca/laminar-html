@@ -2,7 +2,7 @@ package scala.xml
 package binders
 
 import scala.quoted.*
-import scala.xml.MacorsMessage.????
+import scala.xml.MacorsMessage.{????, AttrType}
 
 object LaminarMod {
   trait ModEvidence[T]
@@ -12,7 +12,7 @@ object LaminarMod {
     given modEvidence[Ref <: LAnyMod]: ModEvidence[Ref] = new ModEvidence[Ref] {}
   }
 
-  class LaminarModMacros(using Quotes) extends AttrMacrosDef[LAnyMod] {
+  class LaminarModMacros(using Quotes, AttrType) extends AttrMacrosDef[LAnyMod] {
     override def supportSource: Boolean = false
 
     override def checkType[T: Type]: Boolean = {
@@ -33,6 +33,16 @@ object LaminarMod {
       expr: Expr[T])(using MacrosPosition): Expr[MetatDataBinder] = {
       '{ LaminarModApi.bindMod(${ expr }.asInstanceOf[LModBase]) }
     }
+  }
+
+  def unapply[T](
+    tuple: (Option[String], String, Type[T]),
+  )(using quotes: Quotes): Option[(String, AttrMacrosDef[?])] = {
+    val (_, _, tpe)          = tuple
+    given attrType: AttrType = AttrType("LaminarMod")
+    val mod                  = new LaminarModMacros()
+    if (mod.checkType(using tpe)) then Some("LaminarMod", mod)
+    else None
   }
 
   object LaminarModMacros {

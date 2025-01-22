@@ -80,8 +80,9 @@ object AttrMacrosDef {
   def unapply[T](
     tuple: (Option[String], String, Type[T]),
   )(using quotes: Quotes): Option[(String, AttrMacrosDef[?])] = {
-    Events
+    LaminarMod
       .unapply(tuple)
+      .orElse(Events.unapply(tuple))
       .orElse(Hooks.unapply(tuple))
       .orElse(Attrs.unapply(tuple))
   }
