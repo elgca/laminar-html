@@ -29,16 +29,10 @@ object Attrs {
     encode: Expr[R => String],
     validType: Type[?],
   )(using quotes: Quotes, rTpe: Type[R], attrTpe: AttrType)
-      extends AttrMacrosDef[R] {
+      extends AttrMacrosDef[R | Option[R]] {
 
     import quotes.*
     import quotes.reflect.*
-
-    def checkType[T: Type]: Boolean = {
-      if TypeRepr.of[T] =:= TypeRepr.of[Text] then true
-      else if TypeRepr.of[T] <:< TypeRepr.of[R] || TypeRepr.of[T] <:< TypeRepr.of[Option[R]] then true
-      else false
-    }
 
     override def withConstImpl[T: Type](
       namespace: Expr[NamespaceBinding => Option[String]],
@@ -120,7 +114,7 @@ object Attrs {
     import quotes.*
     import quotes.reflect.*
 
-    def checkType[T](using tpe: Type[T]): Boolean = {
+    override def checkType[T](using tpe: Type[T]): Boolean = {
       if TypeRepr.of[T] =:= TypeRepr.of[Text] then true
       else if normalizer[T](using tpe).nonEmpty then true
       else false
@@ -234,6 +228,14 @@ object Attrs {
         (quotes: Quotes) => HtmlAttrMacros.StringAttr(using quotes, attrType(s"[${namespace}:${name}]")))
     }
 
+  }
+
+  def unknownAttribute(
+    prefix: Option[String],
+    name: String,
+  )(using quotes: Quotes): HtmlAttrMacros[String] = {
+    given attrType: AttrType = AttrType(s"UnknownAttr<${prefix.map(_ + ":").getOrElse("")}${name}>")
+    HtmlAttrMacros.StringAttr
   }
 
   // ------------ HtmlAttrs ------------

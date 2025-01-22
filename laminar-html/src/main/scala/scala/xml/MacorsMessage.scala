@@ -11,41 +11,6 @@ object MacorsMessage {
 
   val ShowTypeHints = System.getProperty("show_type_hints") != "false"
 
-  def unsupportEventType[T: Type](using
-    quotes: Quotes,
-    position: MacrosPosition,
-    attrType: AttrType,
-  ): Nothing = raiseError {
-    if isChinese then {
-      s"""不支持的事件类型 ${formatType[T]}, 受到支持事件函数:
-         |  - () => Unit
-         |  - (event:T <: dom.Event) => Unit
-         |  - (value:String) => Unit 等效于: (e: dom.Event) => f(e.target.value.getOrElse(""))
-         |  - (checked:Boolean) => Unit  等效于: (e: dom.Event) => f(e.target.checked.getOrElse(false))
-         |  - (file:List[dom.File]) => Unit 等效于: (e: dom.Event) => f(e.target.files.getOrElse(List.empty))
-         |""".stripMargin
-    } else {
-      s"""Unsupport Events Type ${formatType[T]}, Supported event functions:
-         |  - `() => Unit`
-         |  - `(event:T <: dom.Event) => Unit`
-         |  - `(value:String) => Unit`  Equivalent: `(e: dom.Event) => f(e.target.value.getOrElse(""))`
-         |  - `(checked:Boolean) => Unit`  Equivalent: `(e: dom.Event) => f(e.target.checked.getOrElse(false))`
-         |  - `(file:List[dom.File]) => Unit` Equivalent: `(e: dom.Event) => f(e.target.files.getOrElse(List.empty))`
-         |""".stripMargin
-    }
-  }
-
-  def notDefineAttrKey[T: Type](key: String, expr: Expr[T])(using
-    quotes: Quotes,
-    position: MacrosPosition,
-    attrType: AttrType,
-  ): Unit = {
-    logInfo {
-      if isChinese then s"""未定义的属性 ${key} = ${exprShow(expr)}, 类型: ${formatType[T]}"""
-      else s"""Not Define Attribute Key ${key} = ${exprShow(expr)}, type: ${formatType[T]}"""
-    }
-  }
-
   def ????(using
     quotes: Quotes,
     position: MacrosPosition,
@@ -158,10 +123,24 @@ object MacorsMessage {
           case AppliedType(tycon, args)                                                => {
             s"""${tycon.show}[${args.map(show).mkString(", ")}]"""
           }
-          case text if text <:< TypeRepr.of[Text] || text <:< TypeRepr.of[String]      => "String"
-          case other                                                                   => {
+          case text
+              if (text <:< TypeRepr.of[Text] || text <:< TypeRepr.of[String])
+                && !(text =:= TypeRepr.of[Nothing]) =>
+            "String"
+
+          case AndType(left, right) => s"(${show(left)}) & (${show(right)})"
+          case OrType(left, right)  => s"(${show(left)}) | (${show(right)})"
+
+          case TypeBounds(low, hi) if low =:= TypeRepr.of[Nothing] => s"_ <: ${show(hi)}"
+
+          case TypeBounds(low, hi) => s"_ >: ${show(low)} <: ${show(hi)}"
+          case other               => {
             val res = defaultPrinter.show(other)
             if res.startsWith("scala.") && res.count(_ == '.') == 1 then res.drop("scala.".length)
+            else if res.startsWith("scala.collection.immutable.") && res.count(_ == '.') == 3 then
+              res.drop("scala.collection.immutable.".length)
+            else if res.startsWith("scala.scalajs.js.") then res.drop("scala.scalajs.".length)
+            else if res.startsWith("org.scalajs.dom.") then res.drop("org.scalajs.".length)
             else res
           }
         }

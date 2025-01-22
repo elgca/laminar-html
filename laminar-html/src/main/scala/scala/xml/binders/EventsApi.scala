@@ -13,6 +13,8 @@ object EventsApi {
   }
 
   object ToJsListener {
+    given dynamic: ToJsListener[js.Dynamic => Unit] = fun => (e: dom.Event) => fun(e.asInstanceOf[js.Dynamic])
+
     given unit: ToJsListener[() => Unit] = fun => (e: dom.Event) => fun()
 
     given event[Event <: dom.Event]: ToJsListener[Event => Unit] = fun => fun
@@ -29,11 +31,12 @@ object EventsApi {
       fun(DomApi.getFiles(ev.target.asInstanceOf[dom.Element]).getOrElse(List.empty))
     }
 
-    type ListenerFuncTypes = (() => Unit) | //
-      ((? <: dom.Event) => Unit) | //
+    type ListenerFuncTypes[Event <: dom.Event] = (() => Unit) | //
+      ((? <: Event) => Unit) | //
       (String => Unit) | //
       (Boolean => Unit) | //
-      (List[dom.File] => Unit)
+      (List[dom.File] => Unit) | //
+      (js.Dynamic => Unit)
   }
 
   def addEventListener(

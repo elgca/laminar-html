@@ -1,53 +1,55 @@
 package scala.xml
 package binders
 
+import scala.collection.mutable.ListBuffer
 import scala.quoted.*
 import scala.util.Try as ScalaTry
-import scala.xml.MacorsMessage.????
+import scala.xml.MacorsMessage.{????, AttrType}
 
 object Props {
   given infoType: MacorsMessage.AttrType = MacorsMessage.AttrType("HtmlProps")
 
-  def unapply(e: String): Option[String] = {
-    allProps.find(key => key.equalsIgnoreCase(e))
+  def unapply[T](
+    tuple: (Option[String], String, Type[T]),
+  )(using quotes: Quotes): Option[(String, AttrMacrosDef[?])] = {
+    val (prefix: Option[String], attrKey: String, tpe: Type[T]) = tuple
+    propsDefine.value.iterator
+      .flatMap { case (propName, attr, factory) =>
+        attr(attrKey)
+          .filter(_ => prefix.isEmpty)
+          .map(* => propName -> factory(quotes))
+      }
+      .find(x => x._2.checkType(using tpe))
   }
 
   class PropMacros[R](
     val propKey: String,
     constValueConversion: String => R,
-  )(using
+  )(using AttrType)(using
     quotes: Quotes,
     propToExpr: ToExpr[R],
     propType: Type[R],
-  ) {
+  ) extends AttrMacrosDef[R | Option[R]] {
     import quotes.reflect.*
     import quotes.*
 
-    def checkType[T: Type]: Boolean = {
-      if TypeRepr.of[T] =:= TypeRepr.of[Text] then true
-      else if TypeRepr.of[T] <:< TypeRepr.of[R] || TypeRepr.of[T] <:< TypeRepr.of[Option[R]] then true
-      else false
-    }
-
-    private def block[T: Type](body: => Expr[MetatDataBinder])(using MacrosPosition): Expr[MetatDataBinder] = {
-      if !checkType[T] then MacorsMessage.expectationType[T, R | Option[R]]
-      MacorsMessage.showSupportedTypes[R | Option[R]]
-      body
-    }
-
-    def withConst[T: Type](
-      constStr: String,
-    )(using MacrosPosition): Expr[MetatDataBinder] = block[T] {
+    override protected def withConstImpl[T: Type](
+      namespace: Expr[NamespaceBinding => Option[String]],
+      prefix: Option[String],
+      attrKey: String,
+      constStr: String)(using MacrosPosition): Expr[MetatDataBinder] = {
       ScalaTry(constValueConversion(constStr))
         .map(r => {
           '{ PropsApi.setHtmlPropertyBinder(${ Expr(propKey) }, ${ Expr(r) }) }
         })
-        .getOrElse(MacorsMessage.unsupportConstProp(constStr)(using propType))
+        .getOrElse(MacorsMessage.unsupportConstProp[R](constStr))
     }
 
-    def withExpr[T: Type](
-      expr: Expr[T],
-    )(using MacrosPosition): Expr[MetatDataBinder] = block[T] {
+    override protected def withExprImpl[T: Type](
+      namespace: Expr[NamespaceBinding => Option[String]],
+      prefix: Option[String],
+      attrKey: String,
+      expr: Expr[T])(using MacrosPosition): Expr[MetatDataBinder] = {
       expr match {
         case v: Expr[R] @unchecked if TypeRepr.of[T] <:< TypeRepr.of[R]                    => {
           '{ PropsApi.setHtmlPropertyBinder(${ Expr(propKey) }, ${ v }) }
@@ -65,133 +67,142 @@ object Props {
         case _ => MacorsMessage.expectationType[T, R | Option[R]]
       }
     }
-  }
 
-  object PropMacros {
+    override def withExprFromSourceImpl[V: Type, CC <: Source[V]: Type](
+      namespace: Expr[NamespaceBinding => Option[String]],
+      prefix: Option[String],
+      attrKey: String,
+      sourceValue: Expr[CC])(using MacrosPosition): Expr[MetatDataBinder] = {
+      if propKey == "value" then {
+        import quotes.reflect.*
+        import quotes.*
+        sourceValue match {
+          case sourceStr: Expr[Source[String]] @unchecked if TypeRepr.of[R] <:< TypeRepr.of[String] =>
+            '{ PropsApi.valuePropUpdater(${ sourceStr }) }
 
-    def unapply(e: String)(using quotes: Quotes): Option[PropMacros[?]] = {
-      Props
-        .unapply(e)
-        .map {
-          case propKey @ StringProp() => PropMacros[String](propKey, x => x)
-          case propKey @ BoolProp()   => PropMacros[Boolean](propKey, x => x.toBoolean)
-          case propKey @ DoubleProp() => PropMacros[Double](propKey, x => x.toDouble)
-          case propKey @ IntProp()    => PropMacros[Double](propKey, x => x.toInt)
+          case _ => MacorsMessage.expectationType[CC, String | Option[String] | Source[String]]
         }
-    }
-
-    def withKey(e: String)(using quotes: Quotes): PropMacros[?] = {
-      unapply(e).getOrElse(????)
-    }
-
-  }
-
-  def fromSource[T: Type, CC <: Source[T]: Type](
-    name: "value",
-    sourceValue: Expr[CC],
-  )(using quotes: Quotes): Expr[MetatDataBinder] = {
-    import quotes.reflect.*
-    import quotes.*
-    sourceValue match {
-      case sourceStr: Expr[Source[String]] @unchecked if TypeRepr.of[T] <:< TypeRepr.of[String] =>
-        MacorsMessage.showSupportedTypes[String | Option[String] | Source[String]]
-        '{ PropsApi.valuePropUpdater(${ sourceStr }) }
-
-      case _ => MacorsMessage.expectationType[CC, String | Option[String] | Source[String]]
+      } else {
+        super.withExprFromSourceImpl(namespace, prefix, attrKey, sourceValue)
+      }
     }
   }
 
-  object StringProp {
-    def unapply(x: String): Boolean = stringProps.contains(x)
-    def apply(x: String): Boolean   = stringProps.contains(x)
+  // ------------ Define --------------
+  val propsDefine = new PropsDefine() with HtmlProps
+
+  class PropsDefine(
+    val value: ListBuffer[(String, String => Option[String], AttrMacrosDefFactory)] = ListBuffer.empty,
+  ) {
+
+    def attrType(name: String)(using pos: MacrosPosition) = {
+      val posName =
+        pos.showNane.value // pos.name.value.split('.').dropRight(1).lastOption.getOrElse(pos.showNane.value)
+      AttrType(s"${posName}:<${name}>")
+    }
+
+    def propName(key: String) = { (inputKey: String) =>
+      if key.equalsIgnoreCase(inputKey) then {
+        Some(key)
+      } else {
+        None
+      }
+    }
+
+    def boolProp(name: String)(using MacrosPosition) = value.addOne {
+      (
+        name,
+        propName(name),
+        (q: Quotes) => { given quotes: Quotes = q; PropMacros[Boolean](name, x => x.toBoolean)(using attrType(name)) },
+      )
+    }
+
+    def doubleProp(name: String)(using MacrosPosition) = value.addOne {
+      (
+        name,
+        propName(name),
+        (q: Quotes) => { given quotes: Quotes = q; PropMacros[Double](name, x => x.toDouble)(using attrType(name)) },
+      )
+    }
+
+    def intProp(name: String)(using MacrosPosition) = value.addOne {
+      (
+        name,
+        propName(name),
+        (q: Quotes) => { given quotes: Quotes = q; PropMacros[Int](name, x => x.toInt)(using attrType(name)) },
+      )
+    }
+
+    def stringProp(name: String)(using MacrosPosition) = value.addOne {
+      (
+        name,
+        propName(name),
+        (q: Quotes) => { given quotes: Quotes = q; PropMacros[String](name, x => x)(using attrType(name)) },
+      )
+    }
   }
 
-  object BoolProp {
-    def unapply(x: String)        = boolProps.contains(x)
-    def apply(x: String): Boolean = boolProps.contains(x)
+  /** [[com.raquo.laminar.defs.props.HtmlProps]] */
+  trait HtmlProps { self: PropsDefine =>
+    boolProp("indeterminate")
+    boolProp("checked")
+    boolProp("selected")
+    stringProp("value")
+    stringProp("accept")
+    stringProp("action")
+    stringProp("accessKey")
+    stringProp("alt")
+    stringProp("autocapitalize")
+    stringProp("autocomplete")
+    boolProp("autofocus")
+    intProp("cols")
+    intProp("colSpan")
+    stringProp("content")
+    boolProp("defaultChecked")
+    boolProp("defaultSelected")
+    stringProp("defaultValue")
+    stringProp("dir")
+    boolProp("disabled")
+    stringProp("download")
+    boolProp("draggable")
+    stringProp("enctype")
+    stringProp("htmlFor")
+    stringProp("formEnctype")
+    stringProp("formMethod")
+    boolProp("formNoValidate")
+    stringProp("formTarget")
+    boolProp("hidden")
+    doubleProp("high")
+    stringProp("httpEquiv")
+    stringProp("id")
+    stringProp("inputMode")
+    stringProp("label")
+    stringProp("lang")
+    stringProp("loading")
+    doubleProp("low")
+    intProp("minLength")
+    intProp("maxLength")
+    stringProp("media")
+    stringProp("method")
+    boolProp("multiple")
+    stringProp("name")
+    boolProp("noValidate")
+    doubleProp("optimum")
+    stringProp("pattern")
+    stringProp("placeholder")
+    boolProp("readOnly")
+    boolProp("required")
+    intProp("rows")
+    intProp("rowSpan")
+    boolProp("scoped")
+    intProp("size")
+    stringProp("slot")
+    boolProp("spellcheck")
+    intProp("tabIndex")
+    stringProp("target")
+    stringProp("title")
+    boolProp("translate")
+    stringProp("xmlns")
+    stringProp("crossOrigin")
   }
-
-  object DoubleProp {
-    def unapply(x: String)        = doubleProps.contains(x)
-    def apply(x: String): Boolean = doubleProps.contains(x)
-  }
-
-  object IntProp {
-    def unapply(x: String)        = intProps.contains(x)
-    def apply(x: String): Boolean = intProps.contains(x)
-  }
-
-  val stringProps = Set(
-    "value",
-    "accept",
-    "action",
-    "accessKey",
-    "alt",
-    "autocapitalize",
-    "autocomplete",
-    "content",
-    "defaultValue",
-    "dir",
-    "download",
-    "enctype",
-    "htmlFor",
-    "formEnctype",
-    "formMethod",
-    "formTarget",
-    "httpEquiv",
-    "id",
-    "inputMode",
-    "label",
-    "lang",
-    "loading",
-    "media",
-    "method",
-    "name",
-    "pattern",
-    "placeholder",
-    "slot",
-    "target",
-    "title",
-    "xmlns",
-    "crossOrigin",
-  )
-
-  val boolProps = Set(
-    "indeterminate",
-    "checked",
-    "selected",
-    "autofocus",
-    "defaultChecked",
-    "defaultSelected",
-    "disabled",
-    "draggable",
-    "formNoValidate",
-    "hidden",
-    "multiple",
-    "noValidate",
-    "readOnly",
-    "required",
-    "scoped",
-    "spellcheck",
-    "translate",
-  )
-
-  val doubleProps = Set(
-    "high",
-    "low",
-    "optimum",
-  )
-
-  val intProps = Set(
-    "cols",
-    "colSpan",
-    "minLength",
-    "maxLength",
-    "rows",
-    "rowSpan",
-    "size",
-    "tabIndex",
-  )
-
-  val allProps = stringProps ++ boolProps ++ intProps ++ doubleProps ++ intProps
 }

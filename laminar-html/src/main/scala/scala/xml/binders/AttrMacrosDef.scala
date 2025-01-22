@@ -5,12 +5,21 @@ import scala.quoted.*
 import scala.xml.MacorsMessage.AttrType
 
 trait AttrMacrosDef[R](using Quotes, Type[R], AttrType) {
-  def checkType[T](using Type[T]): Boolean
-  def supportSource: Boolean = true
+
+  def checkType[T](using Type[T]): Boolean = {
+    import quotes.*
+    import quotes.reflect.*
+
+    if TypeRepr.of[T] =:= TypeRepr.of[Text] then true
+    else if TypeRepr.of[T] =:= TypeRepr.of[Nil.type] then true // 这个被视作String
+    else if TypeRepr.of[T] <:< TypeRepr.of[R] || TypeRepr.of[T] <:< TypeRepr.of[Option[R]] then true
+    else false
+  }
+  def supportSource: Boolean               = true
 
   protected def block[T: Type](body: => Expr[MetatDataBinder])(using MacrosPosition): Expr[MetatDataBinder] = {
-    if !checkType[T] then MacorsMessage.expectationType[T, R | Option[R]]
-    MacorsMessage.showSupportedTypes[R | Option[R]]
+    if !checkType[T] then MacorsMessage.expectationType[T, R]
+    MacorsMessage.showSupportedTypes[R]
     body
   }
 
@@ -84,6 +93,8 @@ object AttrMacrosDef {
       .unapply(tuple)
       .orElse(Events.unapply(tuple))
       .orElse(Hooks.unapply(tuple))
+      .orElse(Props.unapply(tuple))
       .orElse(Attrs.unapply(tuple))
+      .orElse(Some((tuple._2, Attrs.unknownAttribute(tuple._1, tuple._2))))
   }
 }

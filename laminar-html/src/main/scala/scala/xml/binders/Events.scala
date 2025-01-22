@@ -3,6 +3,7 @@ package binders
 
 import org.scalajs.dom
 
+import scala.annotation.nowarn
 import scala.collection.mutable.ListBuffer
 import scala.quoted.*
 import scala.xml.MacorsMessage.{????, AttrType}
@@ -19,16 +20,22 @@ object Events {
         attr(attrKey)
           .map(key => key -> factory(quotes))
       }
-      .find(x => x._2.checkType(using tpe))
+      .find(_ => true)
+//      .find(x => x._2.checkType(using tpe))
   }
 
   import EventsApi.*
   import EventsApi.ToJsListener.ListenerFuncTypes
 
-  class EventsMacros(val eventKey: String)(using quotes: Quotes, attrType: AttrType)
-      extends AttrMacrosDef[ListenerFuncTypes] {
+  class EventsMacros[Ev <: dom.Event](
+    val eventKey: String,
+  )(using
+    quotes: Quotes,
+    attrType: AttrType,
+  )(using Type[Ev])
+      extends AttrMacrosDef[ListenerFuncTypes[Ev]] {
 
-    def checkType[T: Type]: Boolean = {
+    override def checkType[T: Type]: Boolean = {
       conversion[T].isDefined
     }
 
@@ -86,14 +93,18 @@ object Events {
       }
     }
 
-    inline def eventProp[Ev <: dom.Event](name: String)(using pos: MacrosPosition) = {
+    @nowarn
+    inline given tpeProvider[Ev]: (Quotes => Type[Ev]) = (q: Quotes) => Type.of[Ev](using q)
+
+    inline def eventProp[Ev <: dom.Event](name: String)(using tpe: Quotes => Type[Ev])(using pos: MacrosPosition) = {
       val evType = MacorsMessage.getTypeString[Ev]
       value.addOne {
         (
           name,
           eventName(name),
           (q: Quotes) => {
-            new EventsMacros(name)(using q, attrType(name, evType))
+            given ev: Type[Ev] = tpe(q)
+            new EventsMacros[Ev](name)(using q, attrType(name, evType))
           })
       }
     }

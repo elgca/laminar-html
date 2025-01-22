@@ -127,11 +127,6 @@ object MacrosTool {
       .map(_.toSeq)
   }
 
-  private def typeEquals[Base: Type, Target: Type](using quotes: Quotes): Boolean = {
-    import quotes.reflect.*
-    TypeRepr.of[Base] <:< TypeRepr.of[Target]
-  }
-
   // 属性绑定
   inline def attribute[T](inline x: UnprefixedAttribute[T]): MetaData = ${
     unprefixedattributeMacro('x)
@@ -157,80 +152,9 @@ object MacrosTool {
       })
       .getOrElse('{ noNamespace })
   }
-//
-//  def bindAttribute[T: Type](
-//    namespaceURI: Option[String],
-//    prefix: Option[String],
-//    attrKey: String,
-//    valueExpr: Expr[T],
-//  )(using quotes: Quotes): Expr[MetatDataBinder] = {
-//    import Attrs.AttrMacros
-//    val namespace = namespaceFunction(namespaceURI, prefix)
-//    val name      = prefix.map(_ + ":" + attrKey).getOrElse(attrKey)
-//    val macros    = AttrMacros.withKey(attrKey)
-//
-//    val constStr: Option[String] = constAnyValue(valueExpr).map(_.getOrElse(""))
-//    constStr match {
-//      case Some(value) => macros.withConst[T](namespace, prefix, attrKey, value)
-//      case None        => macros.withExpr(namespace, prefix, attrKey, valueExpr)
-//    }
-//  }
-//
-//  def bindUnknownAttribute[T: Type](
-//    namespaceURI: Option[String],
-//    prefix: Option[String],
-//    attrKey: String,
-//    valueExpr: Expr[T],
-//  )(using quotes: Quotes): Expr[MetatDataBinder] = {
-//    import Attrs.*
-//    given attType: MacorsMessage.AttrType = MacorsMessage.AttrType("Undefine")
-//    val namespace                         = namespaceFunction(namespaceURI, prefix)
-//    val name                              = prefix.map(_ + ":" + attrKey).getOrElse(attrKey)
-//    val attrMacros: AttrMacrosDef[String] = AttrMacros.StringAttr
-//    val eventMacros: Events.EventsMacros  = Events.EventsMacros(attrKey)
-//    MacorsMessage.notDefineAttrKey(name, valueExpr)
-//
-//    if attrMacros.checkType[T] then {
-//      val macros                   = attrMacros
-//      val constStr: Option[String] = constAnyValue(valueExpr).map(_.getOrElse(""))
-//      constStr match {
-//        case Some(value) => macros.withConst[T](namespace, prefix, attrKey, value)
-//        case None        => macros.withExpr(namespace, prefix, attrKey, valueExpr)
-//      }
-//    } else if eventMacros.checkType[T] then {
-//      eventMacros.addEventListener(valueExpr)
-//    } else {
-//      MacorsMessage.expectationType[
-//        T,
-//        String | Option[String] | Source[String] | EventsApi.ToJsListener.ListenerFuncTypes,
-//      ]
-//    }
-//  }
 
   def EmptyBinder(using Quotes) = {
     '{ MetaData.EmptyBinder }
-  }
-
-  def dattributeMacro[T: Type](
-    namespaceURI: Option[String],
-    prefix: Option[String],
-    key: String,
-    valueExpr: Expr[T],
-  )(using quotes: Quotes): Expr[MetatDataBinder] = {
-    // 在xhtml中嵌入lamianr的Modifier
-    LaminarMod.LaminarModMacros(valueExpr) match
-      case Some(value) => return value
-      case None        =>
-
-    key match {
-      case Hooks.HooksMacros(hooks) if prefix.isEmpty => hooks.withHooks(valueExpr)
-      case Props.PropMacros(macors) if prefix.isEmpty =>
-        constAnyValue(valueExpr) match {
-          case Some(value) => value.map(str => macors.withConst[T](str)).getOrElse(EmptyBinder)
-          case None        => macors.withExpr(valueExpr)
-        }
-      case _                                          => ???
-    }
   }
 
   def unprefixedattributeMacro[T: Type](
@@ -256,14 +180,7 @@ object MacrosTool {
         } { value =>
           macros.withConst(namespace, prefix, name, value)
         }
-      case _                           =>
-        report.info(s"NotFound===>" + namespaceURI)
-        dattributeMacro(
-          namespaceURI = namespaceURI,
-          prefix = prefix,
-          key = attrKey,
-          valueExpr = valueExpr,
-        )
+      case _                           => ????
     }
 
     '{ MetaData(${ binderExpr }, ${ nextExpr }) }
@@ -280,14 +197,21 @@ object MacrosTool {
     val Literal(StringConstant(attrPrefix: String)) = prefixExpr.asTerm: @unchecked
     val Literal(StringConstant(attrKey: String))    = keyExpr.asTerm: @unchecked
 
+    val prefix       = Some(attrPrefix)
     // 如果我可以获取默认配置获取的namespaceURI,那么就不需要通过Elem输入了
-    val namespaceURI                      = TopScope.namespaceURI(attrPrefix)
-    val binderExpr: Expr[MetatDataBinder] = dattributeMacro(
-      namespaceURI = namespaceURI,
-      prefix = Some(attrPrefix),
-      key = attrKey,
-      valueExpr = valueExpr,
-    )
+    val namespaceURI = TopScope.namespaceURI(attrPrefix)
+    val namespace    = namespaceFunction(namespaceURI, prefix)
+    val constValue   = constValueIncludeSeq(valueExpr).map(_.mkString(" "))
+
+    val binderExpr: Expr[MetatDataBinder] = (prefix, attrKey, Type.of[T]) match {
+      case AttrMacrosDef(name, macros) =>
+        constValue.fold {
+          macros.withExpr(namespace, prefix, name, valueExpr)
+        } { value =>
+          macros.withConst(namespace, prefix, name, value)
+        }
+      case _                           => ????
+    }
 
     '{ MetaData(${ binderExpr }, ${ nextExpr }) }
   }
@@ -301,35 +225,10 @@ object MacrosTool {
     sourceValue: Expr[CC],
   )(using quotes: Quotes): Expr[MetatDataBinder] = {
     val namespace = namespaceFunction(namespaceURI, prefix)
-//    val constValue = constValueIncludeSeq(valueExpr).map(_.mkString(" "))
     (prefix, key, Type.of[V]) match {
       case AttrMacrosDef(name, macros) =>
         macros.withExprFromSource(namespace, prefix, name, sourceValue)
-      case _                           => {
-        key match {
-          case "value" if prefix.isEmpty                  => {
-            Props.fromSource("value", sourceValue)
-          }
-          case Hooks.HooksMacros(hooks) if prefix.isEmpty =>
-            MacorsMessage.raiseError(s"Unable to bind hooks from : ${MacorsMessage.formatType[CC]}")
-
-          case otherKeys => {
-            '{ (ns: NamespaceBinding, element: ReactiveElementBase) =>
-              ReactiveElement.bindFn(element, ${ sourceValue }.toObservable) { nextValue =>
-                ${
-                  val updaterExpr: Expr[MetatDataBinder] = dattributeMacro(
-                    namespaceURI = namespaceURI,
-                    prefix = prefix,
-                    key = otherKeys,
-                    valueExpr = 'nextValue,
-                  )
-                  updaterExpr
-                }.apply(ns, element)
-              }
-            }
-          }
-        }
-      }
+      case _                           => ????
     }
   }
 
