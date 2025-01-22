@@ -6,6 +6,19 @@ import scala.xml.MacorsMessage.{????, AttrType}
 
 object Hooks {
 
+  def unapply[T](
+    tuple: (Option[String], String, Type[T]),
+  )(using quotes: Quotes): Option[(String, AttrMacrosDef[?])] = {
+    val (pfx, inputKey, tpe) = tuple
+    hooks.view
+      .filterKeys(key => {
+        key.equalsIgnoreCase(inputKey) ||
+        (inputKey.startsWith("on") && key.equalsIgnoreCase(inputKey.drop(2)))
+      })
+      .mapValues(_.apply(quotes))
+      .headOption
+  }
+
   def unapply(inputKey: String)(using Quotes): Option[String] = {
     hooks.keys.find(key => {
       key.equalsIgnoreCase(inputKey) ||
@@ -13,9 +26,9 @@ object Hooks {
     })
   }
 
-  def hooks(using Quotes) = Map(
-    "onunmount" -> HooksMacros.unMountHooks,
-    "onmount"   -> HooksMacros.mountHooks,
+  val hooks = Map(
+    "onunmount" -> ((q: Quotes) => HooksMacros.unMountHooks(using q)),
+    "onmount"   -> ((q: Quotes) => HooksMacros.mountHooks(using q)),
   )
 
   trait HooksMacros[R](using Quotes, Type[R], AttrType) extends AttrMacrosDef[R] {
@@ -48,11 +61,11 @@ object Hooks {
     }
 
     def apply(hookKey: String)(using Quotes): HooksMacros[?] = {
-      Hooks.hooks.getOrElse(hookKey, ????)
+      Hooks.hooks.getOrElse(hookKey, ????).apply(quotes)
     }
 
     def mountHooks(using Quotes): HooksMacros[MountFuncValid] = {
-      given attrType: AttrType = AttrType("mount")
+      given attrType: AttrType = AttrType("Hooks:<mount>")
       new HooksMacros[MountFuncValid] {
 
         override def checkType[T: Type]: Boolean = conversion.nonEmpty
@@ -68,8 +81,8 @@ object Hooks {
       }
     }
 
-    def unMountHooks(using Quotes, AttrType): HooksMacros[UnMountFuncValid] = {
-      given attrType: AttrType = AttrType("unmount")
+    def unMountHooks(using Quotes): HooksMacros[UnMountFuncValid] = {
+      given attrType: AttrType = AttrType("Hooks:<unmount>")
       new HooksMacros[UnMountFuncValid] {
         override def checkType[T: Type]: Boolean = conversion.nonEmpty
 

@@ -82,6 +82,7 @@ object AttrMacrosDef {
   )(using quotes: Quotes): Option[(String, AttrMacrosDef[?])] = {
     Events
       .unapply(tuple)
+      .orElse(Hooks.unapply(tuple))
       .orElse(Attrs.unapply(tuple))
   }
 }
