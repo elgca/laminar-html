@@ -8,9 +8,11 @@ import scala.quoted.*
 object Events {
   given infoType: MacorsMessage.AttrType = MacorsMessage.AttrType("Events")
 
-  def unapply(e: String)(using Quotes): Option[String] = {
-    if e.startsWith("on") then eventKey.find(key => key.equalsIgnoreCase(e.drop(2)))
-    else None
+  def unapply(inputKey: String)(using Quotes): Option[String] = {
+    eventKey.find(key => {
+      key.equalsIgnoreCase(inputKey) ||
+      (inputKey.startsWith("on") && key.equalsIgnoreCase(inputKey.drop(2)))
+    })
   }
 
   class EventsMacros(val eventKey: String)(using quotes: Quotes) {

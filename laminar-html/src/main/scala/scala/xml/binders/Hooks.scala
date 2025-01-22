@@ -6,8 +6,11 @@ import scala.xml.MacorsMessage.????
 
 object Hooks {
 
-  def unapply(e: String): Option[String] = {
-    hooks.keys.find(key => key.equalsIgnoreCase(e))
+  def unapply(inputKey: String): Option[String] = {
+    hooks.keys.find(key => {
+      key.equalsIgnoreCase(inputKey) ||
+      (inputKey.startsWith("on") && key.equalsIgnoreCase(inputKey.drop(2)))
+    })
   }
 
   lazy val hooks = Map(

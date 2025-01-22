@@ -234,14 +234,14 @@ object MacrosTool {
       case None        =>
 
     key match {
-      case Hooks.HooksMacros(hooks) if prefix.isEmpty                         => hooks.withHooks(valueExpr)
-      case Events.EventsMacros(events: Events.EventsMacros) if prefix.isEmpty => events.addEventListener(valueExpr)
-      case Props.PropMacros(macors: Props.PropMacros[?]) if prefix.isEmpty    =>
+      case Hooks.HooksMacros(hooks) if prefix.isEmpty                   => hooks.withHooks(valueExpr)
+      case Events.EventsMacros(events) if prefix.isEmpty                => events.addEventListener(valueExpr)
+      case Props.PropMacros(macors) if prefix.isEmpty                   =>
         constAnyValue(valueExpr) match {
           case Some(value) => value.map(str => macors.withConst[T](str)).getOrElse(EmptyBinder)
           case None        => macors.withExpr(valueExpr)
         }
-      case Attrs.CompositeAttrMacros(macros: Attrs.CompositeAttrMacros)       =>
+      case Attrs.CompositeAttrMacros(macros: Attrs.CompositeAttrMacros) =>
         val attrKey   = macros.attrKey
         val name      = prefix.map(_ + ":" + attrKey).getOrElse(attrKey)
         val namespace = namespaceFunction(namespaceURI, prefix)
@@ -250,7 +250,7 @@ object MacrosTool {
         } {
           macros.withConst(namespace, name, _)
         }
-      case Attrs(attrKey) if !Attrs.isComposite(attrKey)                      =>
+      case Attrs(attrKey) if !Attrs.isComposite(attrKey)                =>
         bindAttribute(
           namespaceURI = namespaceURI,
           prefix = prefix,
@@ -323,12 +323,13 @@ object MacrosTool {
     sourceValue: Expr[CC],
   )(using quotes: Quotes): Expr[MetatDataBinder] = {
     key match {
-      case "value" if prefix.isEmpty                     => {
+      case "value" if prefix.isEmpty                                    => {
         Props.fromSource("value", sourceValue)
       }
-      case Events.EventsMacros(events) if prefix.isEmpty =>
+      case Events.EventsMacros(events) if prefix.isEmpty                =>
         events.addEventListenerFromSource(sourceValue)
-
+      case Hooks.HooksMacros(hooks) if prefix.isEmpty                   =>
+        MacorsMessage.raiseError(s"Unable to bind hooks from : ${MacorsMessage.formatType[CC]}")
       case Attrs.CompositeAttrMacros(macros: Attrs.CompositeAttrMacros) => {
         val attrKey   = macros.attrKey
         val name      = prefix.map(_ + ":" + attrKey).getOrElse(attrKey)

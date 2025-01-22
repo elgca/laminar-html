@@ -40,7 +40,6 @@ object Props {
     )(using MacrosPosition): Expr[MetatDataBinder] = block[T] {
       ScalaTry(constValueConversion(constStr))
         .map(r => {
-          if !checkType[T] then MacorsMessage.expectationType[T, R | Option[R]]
           '{ PropsApi.setHtmlPropertyBinder(${ Expr(propKey) }, ${ Expr(r) }) }
         })
         .getOrElse(MacorsMessage.unsupportConstProp(constStr)(using propType))

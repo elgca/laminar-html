@@ -9,30 +9,24 @@ object MacorsMessage {
   val isChinese =
     Seq(Locale.CHINESE, Locale.CHINA, Locale.SIMPLIFIED_CHINESE, Locale.TRADITIONAL_CHINESE).contains(Locale.getDefault)
 
-  val showInfo = true
+  val ShowTypeHints = System.getProperty("show_type_hints") != "false"
 
   def unsupportEventType[T: Type](using quotes: Quotes, position: MacrosPosition): Nothing = raiseError {
     if isChinese then {
       s"""不支持的事件类型 ${formatType[T]}, 受到支持事件函数:
          |  - () => Unit
          |  - (event:T <: dom.Event) => Unit
-         |  - (value:String) => Unit
-         |      等效于: (e: dom.Event) => f(e.target.value.getOrElse(""))
-         |  - (checked:Boolean) => Unit
-         |      等效于: (e: dom.Event) => f(e.target.checked.getOrElse(false))
-         |  - (file:List[dom.File]) => Unit
-         |      等效于: (e: dom.Event) => f(e.target.files.getOrElse(List.empty))
+         |  - (value:String) => Unit 等效于: (e: dom.Event) => f(e.target.value.getOrElse(""))
+         |  - (checked:Boolean) => Unit  等效于: (e: dom.Event) => f(e.target.checked.getOrElse(false))
+         |  - (file:List[dom.File]) => Unit 等效于: (e: dom.Event) => f(e.target.files.getOrElse(List.empty))
          |""".stripMargin
     } else {
       s"""Unsupport Events Type ${formatType[T]}, Supported event functions:
-         |  - () => Unit
-         |  - (event:T <: dom.Event) => Unit
-         |  - (value:String) => Unit
-         |      Equivalent: (e: dom.Event) => f(e.target.value.getOrElse(""))
-         |  - (checked:Boolean) => Unit
-         |      Equivalent: (e: dom.Event) => f(e.target.checked.getOrElse(false))
-         |  - (file:List[dom.File]) => Unit
-         |      Equivalent: (e: dom.Event) => f(e.target.files.getOrElse(List.empty))
+         |  - `() => Unit`
+         |  - `(event:T <: dom.Event) => Unit`
+         |  - `(value:String) => Unit`  Equivalent: `(e: dom.Event) => f(e.target.value.getOrElse(""))`
+         |  - `(checked:Boolean) => Unit`  Equivalent: `(e: dom.Event) => f(e.target.checked.getOrElse(false))`
+         |  - `(file:List[dom.File]) => Unit` Equivalent: `(e: dom.Event) => f(e.target.files.getOrElse(List.empty))`
          |""".stripMargin
     }
   }
@@ -180,7 +174,7 @@ object MacorsMessage {
 
   def logInfo(msg: String)(using quotes: Quotes, position: MacrosPosition): Unit = {
     import quotes.reflect.*
-    if showInfo then report.info(msg)
+    if ShowTypeHints then report.info(msg)
   }
 
   case class AttrType(str: String) extends AnyVal {

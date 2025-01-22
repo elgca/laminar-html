@@ -58,3 +58,6 @@ lazy val `laminar-html` = project
   .settings(std_settings("laminar-html", "laminar-html"))
   .settings(buildinfo_settings("html"))
   .enablePlugins(ScalaJSPlugin)
+
+// 显示类型提示
+val _ = System.setProperty("show_type_hints", "true")
