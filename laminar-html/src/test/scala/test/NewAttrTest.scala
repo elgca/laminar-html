@@ -2,12 +2,7 @@ package test
 
 import com.raquo.airstream.state.Var
 import com.raquo.laminar.api.L.*
-
-import scala.xml.binders.Attrs.AttrProvider
-
-//import scala.xml.AttrKey.given
 import com.raquo.laminar.api.features.unitArrows
-given bcs: AttrProvider["bcs"] = null.asInstanceOf[AttrProvider["bcs"]]
 
 object NewAttrTest {
 

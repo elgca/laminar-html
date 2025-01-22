@@ -6,7 +6,13 @@ lazy val root = project
   .settings(
     name                                                := "laminar-html-example",
     scalaVersion                                        := "3.5.2",
-    scalacOptions ++= Seq("-encoding", "utf-8", "-deprecation", "-feature"),
+    scalacOptions ++= Seq(
+      "-encoding",
+      "utf-8",
+      "-deprecation",
+      "-feature",
+      "-language:implicitConversions",
+    ),
     scalaJSUseMainModuleInitializer                     := true,
     scalaJSLinkerConfig ~= {
       _.withModuleKind(ModuleKind.ESModule)
@@ -16,6 +22,9 @@ lazy val root = project
     Compile / fullLinkJS / scalaJSLinkerOutputDirectory := target.value / "scalajs-modules",
     libraryDependencies ++= Seq(
       "org.scala-js"    %%% "scalajs-dom"  % "2.8.0",
-      "io.github.elgca" %%% "laminar-html" % "0.1.8",
+      "io.github.elgca" %%% "laminar-html" % "0.2.0-A",
     ),
   )
+
+// false to close the property type hints, default is true
+val _ = System.setProperty("show_type_hints", "true")

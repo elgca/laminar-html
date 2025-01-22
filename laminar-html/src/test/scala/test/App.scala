@@ -16,7 +16,6 @@ val app = {
     <button onclick={() => value.update(_ + 1)}
             cccc={L.className := "htllo"}
             onmount={() => {}}
-            ggg={value.signal.map(_.toString)}
     >
       click me
     </button>
@@ -49,7 +48,7 @@ val testVar = {
   </button>
 }
 
-val svgHtml = CompileCheck {
+val svgHtml = {
   val classDef  = Option("bi bi-0-circle-fill")
   val classDef2 = Option("bi bi-0-circle-fill")
   <div>

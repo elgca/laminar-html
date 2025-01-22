@@ -1,65 +1,51 @@
 package scala.xml
 package binders
 
+import scala.collection.mutable
+import scala.collection.mutable.ListBuffer
 import scala.quoted.*
 import scala.util.Try as ScalaTry
 import scala.xml.MacorsMessage.????
 
 object Attrs {
+  import AttrsApi.*
   import MacorsMessage.AttrType
-  given infoType: AttrType = AttrType("HtmlAttrs")
 
-  def unapply(e: String): Option[String] = {
-    allAttrs
-      .find(key => key.equalsIgnoreCase(e))
-      .orElse(Seq(e).find(x => complexAttrs(x)))
+  def unapply[T](
+    tuple: (Option[String], String, Type[T]),
+  )(using quotes: Quotes): Option[(String, AttrMacrosDef[?])] = {
+    val (prefix: Option[String], attrKey: String, tpe: Type[T]) = tuple
+    attributeDefine.value.iterator
+      .flatMap { case (pfx, attr, factory) =>
+        attr(attrKey)
+          .filter(_ => prefix == pfx)
+          .map(key => key -> factory(quotes))
+      }
+      .find(x => x._2.checkType(using tpe))
   }
 
-  def isComposite(attrKey: String): Boolean = {
-    compositeHtmlAttr.contains(attrKey)
-  }
-
-  class AttrMacros[R](
-    constFormat: String | scala.Null => String | scala.Null,
-    encode: Expr[R => String | scala.Null],
+  class HtmlAttrMacros[R](
+    constFormat: String => String,
+    encode: Expr[R => String],
     validType: Type[?],
-  )(using
-    quotes: Quotes,
-    propToExpr: ToExpr[R],
-    val propType: Type[R],
-  )(using AttrType) {
-    def this(
-      constFormat: String | scala.Null => String | scala.Null,
-      encode: Expr[R => String | scala.Null],
-    )(using
-      quotes: Quotes,
-      propToExpr: ToExpr[R],
-      propType: Type[R],
-    )(using AttrType) = {
-      this(constFormat, encode, propType)
-    }
+  )(using quotes: Quotes, rTpe: Type[R], attrTpe: AttrType)
+      extends AttrMacrosDef[R] {
 
     import quotes.*
     import quotes.reflect.*
 
-    def checkType[T: Type]: Boolean = {
+    def checkType[T <: AnyKind](using Type[T]): Boolean = {
       if TypeRepr.of[T] =:= TypeRepr.of[Text] then true
       else if TypeRepr.of[T] <:< TypeRepr.of[R] || TypeRepr.of[T] <:< TypeRepr.of[Option[R]] then true
       else false
     }
 
-    private def block[T: Type](body: => Expr[MetatDataBinder])(using MacrosPosition): Expr[MetatDataBinder] = {
-      if !checkType[T] then MacorsMessage.expectationType[T, R | Option[R]]
-      MacorsMessage.showSupportedTypes[R | Option[R]]
-      body
-    }
-
-    def withConst[T: Type](
+    override def withConstImpl[T: Type](
       namespace: Expr[NamespaceBinding => Option[String]],
-      name: String,
-      constStr: String | scala.Null,
-    )(using MacrosPosition): Expr[MetatDataBinder] = block[T] {
-      // 检查常量类型对于 <div cc={"xxx"} /> 需要检查类型, 以确保类型准确
+      prefix: Option[String],
+      attrKey: String,
+      constStr: String)(using MacrosPosition): Expr[MetatDataBinder] = {
+      val name = prefix.map(_ + ":" + attrKey).getOrElse(attrKey)
       ScalaTry(constFormat(constStr))
         .map(r => {
           '{ AttrsApi.setHtmlAttributeBinder(${ namespace }, ${ Expr(name) }, ${ Expr(r) }) }
@@ -67,11 +53,12 @@ object Attrs {
         .getOrElse(MacorsMessage.unsupportConstProp(constStr)(using validType))
     }
 
-    def withExpr[T: Type](
+    override def withExprImpl[T: Type](
       namespace: Expr[NamespaceBinding => Option[String]],
-      name: String,
-      expr: Expr[T],
-    )(using MacrosPosition): Expr[MetatDataBinder] = block[T] {
+      prefix: Option[String],
+      attrKey: String,
+      expr: Expr[T])(using MacrosPosition): Expr[MetatDataBinder] = {
+      val name                           = prefix.map(_ + ":" + attrKey).getOrElse(attrKey)
       val attrValue: Expr[String | Null] = expr match {
         case v: Expr[R] @unchecked if TypeRepr.of[T] <:< TypeRepr.of[R]                    => {
           '{ ${ encode }.apply(${ v }) }
@@ -86,83 +73,94 @@ object Attrs {
     }
   }
 
-  object AttrMacros {
+  object HtmlAttrMacros {
+
+    def apply[R: Type](
+      constFormat: String => String,
+      encode: Expr[R => String],
+    )(using quotes: Quotes, attrTpe: AttrType) = {
+      new HtmlAttrMacros[R](constFormat, encode, Type.of[R])
+    }
+
+    def apply[R](
+      constFormat: String => String,
+      encode: Expr[R => String],
+      validType: Type[?],
+    )(using
+      quotes: Quotes,
+      propToExpr: ToExpr[R],
+      propType: Type[R],
+    )(using AttrType) = {
+      new HtmlAttrMacros[R](constFormat, encode, validType)
+    }
+
     import com.raquo.laminar.codecs.*
 
-    def StringAttr(using Quotes, AttrType) = AttrMacros[String](x => x, '{ StringAsIsCodec.encode })
+    def StringAttr(using Quotes, AttrType) = HtmlAttrMacros[String](x => x, '{ StringAsIsCodec.encode })
 
-    def TrueFalseAttr(using Quotes) =
-      AttrMacros[Boolean](nilsafe(_.toBoolean.toString), '{ BooleanAsTrueFalseStringCodec.encode })
+    def BoolTrueFalseAttr(using Quotes, AttrType) =
+      HtmlAttrMacros[Boolean]((_.toBoolean.toString), '{ BooleanAsTrueFalseStringCodec.encode })
 
-    def OnOffAttr(using Quotes) = AttrMacros[Boolean](
-      nilsafe(x => if Seq("true", "false", "on", "off").contains(x) then x else raiseError),
+    def BoolOnOffAttr(using Quotes, AttrType) = HtmlAttrMacros[Boolean](
+      (x => if Seq("true", "false", "on", "off").contains(x) then x else ????),
       '{ BooleanAsOnOffStringCodec.encode },
       Type.of["true" | "false" | "on" | "off"],
     )
 
-    def IntAttr(using Quotes) = AttrMacros[Int](nilsafe(_.toInt.toString), '{ IntAsStringCodec.encode })
+    def IntAttr(using Quotes, AttrType) = HtmlAttrMacros[Int]((_.toInt.toString), '{ IntAsStringCodec.encode })
 
-    def DoubleAttr(using Quotes) = AttrMacros[Double](nilsafe(_.toDouble.toString), '{ DoubleAsStringCodec.encode })
+    def DoubleAttr(using Quotes, AttrType) =
+      HtmlAttrMacros[Double]((_.toDouble.toString), '{ DoubleAsStringCodec.encode })
 
-    def unapply(e: String)(using Quotes): Option[AttrMacros[?]] = {
-      Attrs.unapply(e).filterNot(isComposite).map {
-        case attrKey if isStringAttr(attrKey)    => { StringAttr } // string必须在最前面, 有些属性在svg和html中重复了, 如果不一致,则优先string
-        case attrKey if isTrueFalseAttr(attrKey) => { TrueFalseAttr }
-        case attrKey if isOnOffAttr(attrKey)     => { OnOffAttr }
-        case attrKey if isDoubleAttr(attrKey)    => { DoubleAttr }
-        case attrKey if isIntAttr(attrKey)       => { IntAttr }
-      }
-    }
-
-    def withKey(e: String)(using Quotes): AttrMacros[?] = {
-      unapply(e).getOrElse(????)
-    }
-
-    private def raiseError: Nothing = ???
-
-    private def nilsafe(f: String => String | scala.Null): String | scala.Null => String | scala.Null = {
-      (s: String | Null) => if s == null then s else f(s)
-    }
   }
 
-  class CompositeAttrMacros(val attrKey: String)(using quotes: Quotes) {
+  class CompositeAttrMacros(using quotes: Quotes) extends AttrMacrosDef[CompositeNormalize.CompositeValidTypes] {
+
     import quotes.*
     import quotes.reflect.*
 
-    import AttrsApi.*
-
-    private def block[T: Type](body: => Expr[MetatDataBinder])(using MacrosPosition): Expr[MetatDataBinder] = {
-      if TypeRepr.of[T] =:= TypeRepr.of[Text] then {} else if normalizer[T].isEmpty then
-        MacorsMessage.expectationType[T, CompositeNormalize.CompositeValidTypes]
-      MacorsMessage.showSupportedTypes[CompositeNormalize.CompositeValidTypes]
-      body
+    def checkType[T](using tpe: Type[T]): Boolean = {
+      if TypeRepr.of[T] =:= TypeRepr.of[Text] then true
+      else if normalizer[T](using tpe).nonEmpty then true
+      else false
     }
 
-    def normalizer[T: Type]: Option[Expr[CompositeNormalize[T]]] = Expr.summon[CompositeNormalize[T]]
+    def normalizer[T](using tpe: Type[T]): Option[Expr[CompositeNormalize[T]]] = {
+      import quotes.reflect.*
+      Implicits.search(TypeRepr.of[CompositeNormalize[T]]) match {
+        case iss: ImplicitSearchSuccess => Some(iss.tree.asExpr.asInstanceOf[Expr[CompositeNormalize[T]]])
+        case isf: ImplicitSearchFailure => None
+      }
+//      Expr.summon[CompositeNormalize[T]]
+    }
 
-    def withConst[T: Type](
+    override def withConstImpl[T: Type](
       namespace: Expr[NamespaceBinding => Option[String]],
-      name: String,
-      constStr: Seq[String],
-    )(using MacrosPosition): Expr[MetatDataBinder] = block[T] {
-      val items = constStr.flatMap(_.split(" ")).filter(_.nonEmpty).toList
+      prefix: Option[String],
+      attrKey: String,
+      constStr: String)(using MacrosPosition): Expr[MetatDataBinder] = {
+      val name  = prefix.map(_ + ":" + attrKey).getOrElse(attrKey)
+      val items = constStr.split(" ").filter(_.nonEmpty).toList
       '{ setCompositeAttributeBinder(${ namespace }, ${ Expr(name) }, ${ Expr(items) }, Nil) }
     }
 
-    def withExpr[T: Type](
+    override def withExprImpl[T: Type](
       namespace: Expr[NamespaceBinding => Option[String]],
-      name: String,
-      expr: Expr[T],
-    )(using MacrosPosition): Expr[MetatDataBinder] = block[T] {
+      prefix: Option[String],
+      attrKey: String,
+      expr: Expr[T])(using MacrosPosition): Expr[MetatDataBinder] = {
+      val name       = prefix.map(_ + ":" + attrKey).getOrElse(attrKey)
       val itemsToAdd = '{ ${ normalizer[T].get }.apply(${ expr }) }
       '{ AttrsApi.setCompositeAttributeBinder(${ namespace }, ${ Expr(name) }, ${ itemsToAdd }, Nil) }
     }
 
-    def withExprFromSource[V: Type, CC <: Source[V]: Type](
+    override def withExprFromSource[V: Type, CC <: Source[V]: Type](
       namespace: Expr[NamespaceBinding => Option[String]],
-      name: String,
-      sourceValue: Expr[CC],
-    )(using MacrosPosition): Expr[MetatDataBinder] = block[V] {
+      prefix: Option[String],
+      attrKey: String,
+      sourceValue: Expr[CC])(using MacrosPosition): Expr[MetatDataBinder] = block[V] {
+      val name = prefix.map(_ + ":" + attrKey).getOrElse(attrKey)
+
       '{
         setCompositeAttributeBinderFromSource(
           ${ namespace },
@@ -176,255 +174,344 @@ object Attrs {
 
   object CompositeAttrMacros {
 
-    def unapply(e: String)(using Quotes): Option[CompositeAttrMacros] = {
-      Attrs.unapply(e).filter(isComposite).map { key =>
-        new CompositeAttrMacros(key)
-      }
+    def apply()(using quotes: Quotes, attrTpe: AttrType): CompositeAttrMacros = {
+      new CompositeAttrMacros()
+    }
+  }
+
+  // ------------ Define --------------
+  val attributeDefine = new AttributeDefine(ListBuffer.empty)
+    with HtmlAttrs
+    with AriaAttrs
+    with SvgAttrs
+    with ComplexHtmlKeys
+    with ComplexSvgKeys
+
+  class AttributeDefine(val value: ListBuffer[(Option[String], String => Option[String], AttrMacrosDefFactory)]) {
+
+    def attrType(name: String)(using pos: MacrosPosition) = {
+      val posName = pos.name.value.split('.').dropRight(1).lastOption.getOrElse(pos.showNane.value)
+      AttrType(s"${posName}:<${name}>")
     }
 
-    def apply(key: String)(using quotes: Quotes): CompositeAttrMacros = { new CompositeAttrMacros(key) }
+    def addOne(e: (Option[String], String => Option[String], AttrMacrosDefFactory)): Unit = value.addOne(e)
+
+    private given Conversion[String, String => Option[String]] = (str: String) =>
+      (str2: String) => {
+        if str.equals(str2) then Some(str)
+        else None
+      }
+
+    def boolAsOnOffAttr(name: String)(using pos: MacrosPosition) = addOne {
+      (None, name, (quotes: Quotes) => HtmlAttrMacros.BoolOnOffAttr(using quotes, attrType(name)))
+    }
+
+    def boolAsTrueFalseAttr(name: String)(using pos: MacrosPosition) = addOne {
+      (None, name, (quotes: Quotes) => HtmlAttrMacros.BoolTrueFalseAttr(using quotes, attrType(name)))
+    }
+
+    def intAttr(name: String)(using pos: MacrosPosition) = addOne {
+      (None, name, (quotes: Quotes) => HtmlAttrMacros.IntAttr(using quotes, attrType(name)))
+    }
+
+    def doubleAttr(name: String)(using pos: MacrosPosition) = addOne {
+      (None, name, (quotes: Quotes) => HtmlAttrMacros.DoubleAttr(using quotes, attrType(name)))
+    }
+
+    def stringAttr(name: String)(using pos: MacrosPosition) = addOne {
+      (None, name, (quotes: Quotes) => HtmlAttrMacros.StringAttr(using quotes, attrType(name)))
+    }
+
+    def stringCompositeAttr(name: String, separator: String)(using pos: MacrosPosition) = addOne {
+      (None, name, (quotes: Quotes) => CompositeAttrMacros()(using quotes, attrType(name)))
+    }
+
+    def stringNsAttr(name: String, namespace: String)(using pos: MacrosPosition) = addOne {
+      (
+        Option(namespace),
+        name,
+        (quotes: Quotes) => HtmlAttrMacros.StringAttr(using quotes, attrType(s"[${namespace}:${name}]")))
+    }
+
   }
 
-  trait AttrProvider[T] {
-    def apply(using Quotes): AttrMacros[?]
+  // ------------ HtmlAttrs ------------
+  /** [[com.raquo.laminar.defs.attrs.HtmlAttrs]] */
+  trait HtmlAttrs { self: AttributeDefine =>
+    def boolAsOnOffHtmlAttr     = boolAsOnOffAttr
+    def boolAsTrueFalseHtmlAttr = boolAsTrueFalseAttr
+    def intHtmlAttr             = intAttr
+    def stringHtmlAttr          = stringAttr
+
+    stringHtmlAttr("charset")
+    boolAsTrueFalseHtmlAttr("contenteditable")
+    stringHtmlAttr("contextmenu")
+    stringHtmlAttr("dropzone")
+    stringHtmlAttr("formaction")
+    stringHtmlAttr("form")
+    intHtmlAttr("height")
+    stringHtmlAttr("href")
+    stringHtmlAttr("list")
+    stringHtmlAttr("max")
+    stringHtmlAttr("min")
+    stringHtmlAttr("src")
+    stringHtmlAttr("step")
+    stringHtmlAttr("type")
+    boolAsOnOffHtmlAttr("unselectable")
+    intHtmlAttr("width")
   }
 
-  def isStringAttr(e: String): Boolean = stringAttrs.contains(e) || stringSvgAttrs.contains(e) || complexAttrs(e)
+  // -------- AriaAttrs --------------
+  /** [[com.raquo.laminar.defs.attrs.AriaAttrs]] */
+  trait AriaAttrs { self: AttributeDefine =>
 
-  def isIntAttr(e: String): Boolean = intAttrs.contains(e) || intSvgAttr.contains(e)
+    def boolAsTrueFalseAriaAttr(name: String)(using MacrosPosition) = boolAsTrueFalseAttr("aria-" + name)
+    def doubleAriaAttr(name: String)(using MacrosPosition)          = doubleAttr("aria-" + name)
+    def intAriaAttr(name: String)(using MacrosPosition)             = intAttr("aria-" + name)
+    def stringAriaAttr(name: String)(using MacrosPosition)          = stringAttr("aria-" + name)
 
-  def isDoubleAttr(e: String): Boolean = doubleSvgAttr.contains(e)
-
-  def isTrueFalseAttr(e: String): Boolean = boolAsTrueFalseAttrs.contains(e)
-
-  def isOnOffAttr(e: String): Boolean = boolAsOnOffAttrs.contains(e)
-
-  val stringAttrs = Set(
-    "charset",
-    "contextmenu",
-    "dropzone",
-    "formaction",
-    "form",
-    "href",
-    "list",
-    "max",
-    "min",
-    "src",
-    "step",
-    "type",
-    "style", // ComplexHtmlKeys
-  )
-
-  val intAttrs = Set(
-    "height",
-    "width",
-  )
-
-  val boolAsOnOffAttrs = Set(
-    "unselectable",
-  )
-
-  val boolAsTrueFalseAttrs = Set(
-    "contenteditable",
-  )
-
-  // ComplexHtmlKeys
-  val compositeHtmlAttr = Set(
-    "class",
-    "rel",
-    "role",
-  )
-
-  def complexAttrs(key: String): Boolean = {
-    if key.startsWith("data-") then true
-    else false
+    stringAriaAttr("activedescendant")
+    boolAsTrueFalseAriaAttr("atomic")
+    stringAriaAttr("autocomplete")
+    boolAsTrueFalseAriaAttr("busy")
+    stringAriaAttr("checked")
+    stringAriaAttr("controls")
+    stringAriaAttr("current")
+    stringAriaAttr("describedby")
+    boolAsTrueFalseAriaAttr("disabled")
+    stringAriaAttr("dropeffect")
+    boolAsTrueFalseAriaAttr("expanded")
+    stringAriaAttr("flowto")
+    boolAsTrueFalseAriaAttr("grabbed")
+    boolAsTrueFalseAriaAttr("haspopup")
+    boolAsTrueFalseAriaAttr("hidden")
+    stringAriaAttr("invalid")
+    stringAriaAttr("label")
+    stringAriaAttr("labelledby")
+    intAriaAttr("level")
+    stringAriaAttr("live")
+    boolAsTrueFalseAriaAttr("multiline")
+    boolAsTrueFalseAriaAttr("multiselectable")
+    stringAriaAttr("orientation")
+    stringAriaAttr("owns")
+    intAriaAttr("posinset")
+    stringAriaAttr("pressed")
+    boolAsTrueFalseAriaAttr("readonly")
+    stringAriaAttr("relevant")
+    boolAsTrueFalseAriaAttr("required")
+    boolAsTrueFalseAriaAttr("selected")
+    intAriaAttr("setsize")
+    stringAriaAttr("sort")
+    doubleAriaAttr("valuemax")
+    doubleAriaAttr("valuemin")
+    doubleAriaAttr("valuenow")
+    stringAriaAttr("valuetext")
   }
 
-  // svg keys
-  val intSvgAttr = Set(
-    "numOctaves",
-  )
+  // -------- SvgAttrs --------------
+  /** [[com.raquo.laminar.defs.attrs.SvgAttrs]] */
+  trait SvgAttrs { self: AttributeDefine =>
+    def doubleSvgAttr = doubleAttr
+    def intSvgAttr    = intAttr
+    def stringSvgAttr = stringAttr
 
-  val doubleSvgAttr = Set(
-    "accent-height",
-    "ascent",
-    "azimuth",
-    "bias",
-    "elevation",
-    "k1",
-    "k2",
-    "k3",
-    "k4",
-    "seed",
-    "specularConstant",
-    "specularExponent",
-  )
+    doubleSvgAttr("accent-height")
+    stringSvgAttr("accumulate")
+    stringSvgAttr("additive")
+    stringSvgAttr("alignment-baseline")
+    doubleSvgAttr("ascent")
+    stringSvgAttr("attributeName")
+    stringSvgAttr("attributeType")
+    doubleSvgAttr("azimuth")
+    stringSvgAttr("baseFrequency")
+    stringSvgAttr("baseline-shift")
+    stringSvgAttr("begin")
+    doubleSvgAttr("bias")
+    stringSvgAttr("calcMode")
+    stringSvgAttr("clip")
+    stringSvgAttr("clip-path")
+    stringSvgAttr("clipPathUnits")
+    stringSvgAttr("clip-rule")
+    stringSvgAttr("color")
+    stringSvgAttr("color-interpolation")
+    stringSvgAttr("color-interpolation-filters")
+    stringSvgAttr("color-profile")
+    stringSvgAttr("color-rendering")
+    stringSvgAttr("contentScriptType")
+    stringSvgAttr("contentStyleType")
+    stringSvgAttr("cursor")
+    stringSvgAttr("cx")
+    stringSvgAttr("cy")
+    stringSvgAttr("d")
+    stringSvgAttr("diffuseConstant")
+    stringSvgAttr("direction")
+    stringSvgAttr("display")
+    stringSvgAttr("divisor")
+    stringSvgAttr("dominant-baseline")
+    stringSvgAttr("dur")
+    stringSvgAttr("dx")
+    stringSvgAttr("dy")
+    stringSvgAttr("edgeMode")
+    doubleSvgAttr("elevation")
+    stringSvgAttr("end")
+    stringSvgAttr("externalResourcesRequired")
+    stringSvgAttr("fill")
+    stringSvgAttr("fill-opacity")
+    stringSvgAttr("fill-rule")
+    stringSvgAttr("filter")
+    stringSvgAttr("filterRes")
+    stringSvgAttr("filterUnits")
+    stringSvgAttr("flood-color")
+    stringSvgAttr("flood-opacity")
+    stringSvgAttr("font-family")
+    stringSvgAttr("font-size")
+    stringSvgAttr("font-size-adjust")
+    stringSvgAttr("font-stretch")
+    stringSvgAttr("font-variant")
+    stringSvgAttr("font-weight")
+    stringSvgAttr("from")
+    stringSvgAttr("gradientTransform")
+    stringSvgAttr("gradientUnits")
+    stringSvgAttr("height")
+    stringSvgAttr("href")
+    stringSvgAttr("imageRendering")
+    stringSvgAttr("id")
+    stringSvgAttr("in")
+    stringSvgAttr("in2")
+    doubleSvgAttr("k1")
+    doubleSvgAttr("k2")
+    doubleSvgAttr("k3")
+    doubleSvgAttr("k4")
+    stringSvgAttr("kernelMatrix")
+    stringSvgAttr("kernelUnitLength")
+    stringSvgAttr("kerning")
+    stringSvgAttr("keySplines")
+    stringSvgAttr("keyTimes")
+    stringSvgAttr("letter-spacing")
+    stringSvgAttr("lighting-color")
+    stringSvgAttr("limitingConeAngle")
+    stringSvgAttr("local")
+    stringSvgAttr("marker-end")
+    stringSvgAttr("marker-mid")
+    stringSvgAttr("marker-start")
+    stringSvgAttr("markerHeight")
+    stringSvgAttr("markerUnits")
+    stringSvgAttr("markerWidth")
+    stringSvgAttr("maskContentUnits")
+    stringSvgAttr("maskUnits")
+    stringSvgAttr("mask")
+    stringSvgAttr("max")
+    stringSvgAttr("min")
+    stringSvgAttr("mode")
+    intSvgAttr("numOctaves")
+    stringSvgAttr("offset")
+    stringSvgAttr("orient")
+    stringSvgAttr("opacity")
+    stringSvgAttr("operator")
+    stringSvgAttr("order")
+    stringSvgAttr("overflow")
+    stringSvgAttr("paint-order")
+    stringSvgAttr("pathLength")
+    stringSvgAttr("patternContentUnits")
+    stringSvgAttr("patternTransform")
+    stringSvgAttr("patternUnits")
+    stringSvgAttr("pointer-events")
+    stringSvgAttr("points")
+    stringSvgAttr("pointsAtX")
+    stringSvgAttr("pointsAtY")
+    stringSvgAttr("pointsAtZ")
+    stringSvgAttr("preserveAlpha")
+    stringSvgAttr("preserveAspectRatio")
+    stringSvgAttr("primitiveUnits")
+    stringSvgAttr("r")
+    stringSvgAttr("radius")
+    stringSvgAttr("refX")
+    stringSvgAttr("refY")
+    stringSvgAttr("repeatCount")
+    stringSvgAttr("repeatDur")
+    stringSvgAttr("requiredFeatures")
+    stringSvgAttr("restart")
+    stringSvgAttr("result")
+    stringSvgAttr("rx")
+    stringSvgAttr("ry")
+    stringSvgAttr("scale")
+    doubleSvgAttr("seed")
+    stringSvgAttr("shape-rendering")
+    doubleSvgAttr("specularConstant")
+    doubleSvgAttr("specularExponent")
+    stringSvgAttr("spreadMethod")
+    stringSvgAttr("stdDeviation")
+    stringSvgAttr("stitchTiles")
+    stringSvgAttr("stop-color")
+    stringSvgAttr("stop-opacity")
+    stringSvgAttr("stroke")
+    stringSvgAttr("stroke-dasharray")
+    stringSvgAttr("stroke-dashoffset")
+    stringSvgAttr("stroke-linecap")
+    stringSvgAttr("stroke-linejoin")
+    stringSvgAttr("stroke-miterlimit")
+    stringSvgAttr("stroke-opacity")
+    stringSvgAttr("stroke-width")
+    stringSvgAttr("style")
+    stringSvgAttr("surfaceScale")
+    stringSvgAttr("tabindex")
+    stringSvgAttr("target")
+    stringSvgAttr("targetX")
+    stringSvgAttr("targetY")
+    stringSvgAttr("text-anchor")
+    stringSvgAttr("text-decoration")
+    stringSvgAttr("text-rendering")
+    stringSvgAttr("to")
+    stringSvgAttr("transform")
+    stringSvgAttr("type")
+    stringSvgAttr("values")
+    stringSvgAttr("viewBox")
+    stringSvgAttr("visibility")
+    stringSvgAttr("width")
+    stringSvgAttr("word-spacing")
+    stringSvgAttr("writing-mode")
+    stringSvgAttr("x")
+    stringSvgAttr("x1")
+    stringSvgAttr("x2")
+    stringSvgAttr("xChannelSelector")
+    stringNsAttr("href", namespace = "xlink")
+    stringNsAttr("role", namespace = "xlink")
+    stringNsAttr("title", namespace = "xlink")
+    stringNsAttr("space", namespace = "xml")
+    stringSvgAttr("xmlns")
+    stringNsAttr("xlink", namespace = "xmlns")
+    stringSvgAttr("y")
+    stringSvgAttr("y1")
+    stringSvgAttr("y2")
+    stringSvgAttr("yChannelSelector")
+    stringSvgAttr("z")
+  }
 
-  val stringSvgAttrs = Set(
-    "accumulate",
-    "additive",
-    "alignment-baseline",
-    "attributeName",
-    "attributeType",
-    "baseFrequency",
-    "baseline-shift",
-    "begin",
-    "calcMode",
-    "clip",
-    "clip-path",
-    "clipPathUnits",
-    "clip-rule",
-    "color",
-    "color-interpolation",
-    "color-interpolation-filters",
-    "color-profile",
-    "color-rendering",
-    "contentScriptType",
-    "contentStyleType",
-    "cursor",
-    "cx",
-    "cy",
-    "d",
-    "diffuseConstant",
-    "direction",
-    "display",
-    "divisor",
-    "dominant-baseline",
-    "dur",
-    "dx",
-    "dy",
-    "edgeMode",
-    "end",
-    "externalResourcesRequired",
-    "fill",
-    "fill-opacity",
-    "fill-rule",
-    "filter",
-    "filterRes",
-    "filterUnits",
-    "flood-color",
-    "flood-opacity",
-    "font-family",
-    "font-size",
-    "font-size-adjust",
-    "font-stretch",
-    "font-variant",
-    "font-weight",
-    "from",
-    "gradientTransform",
-    "gradientUnits",
-    "height",
-    "href",
-    "imageRendering",
-    "id",
-    "in",
-    "in2",
-    "kernelMatrix",
-    "kernelUnitLength",
-    "kerning",
-    "keySplines",
-    "keyTimes",
-    "letter-spacing",
-    "lighting-color",
-    "limitingConeAngle",
-    "local",
-    "marker-end",
-    "marker-mid",
-    "marker-start",
-    "markerHeight",
-    "markerUnits",
-    "markerWidth",
-    "maskContentUnits",
-    "maskUnits",
-    "mask",
-    "max",
-    "min",
-    "mode",
-    "offset",
-    "orient",
-    "opacity",
-    "operator",
-    "order",
-    "overflow",
-    "paint-order",
-    "pathLength",
-    "patternContentUnits",
-    "patternTransform",
-    "patternUnits",
-    "pointer-events",
-    "points",
-    "pointsAtX",
-    "pointsAtY",
-    "pointsAtZ",
-    "preserveAlpha",
-    "preserveAspectRatio",
-    "primitiveUnits",
-    "r",
-    "radius",
-    "refX",
-    "refY",
-    "repeatCount",
-    "repeatDur",
-    "requiredFeatures",
-    "restart",
-    "result",
-    "rx",
-    "ry",
-    "scale",
-    "shape-rendering",
-    "spreadMethod",
-    "stdDeviation",
-    "stitchTiles",
-    "stop-color",
-    "stop-opacity",
-    "stroke",
-    "stroke-dasharray",
-    "stroke-dashoffset",
-    "stroke-linecap",
-    "stroke-linejoin",
-    "stroke-miterlimit",
-    "stroke-opacity",
-    "stroke-width",
-    "style",
-    "surfaceScale",
-    "tabindex",
-    "target",
-    "targetX",
-    "targetY",
-    "text-anchor",
-    "text-decoration",
-    "text-rendering",
-    "to",
-    "transform",
-    "type",
-    "values",
-    "viewBox",
-    "visibility",
-    "width",
-    "word-spacing",
-    "writing-mode",
-    "x",
-    "x1",
-    "x2",
-    "xChannelSelector",
-    "xmlns",
-    "y",
-    "y1",
-    "y2",
-    "yChannelSelector",
-    "z",
-  )
+  // -------- ComplexHtmlKeys --------------
+  /** [[com.raquo.laminar.defs.complex.ComplexHtmlKeys]] */
+  trait ComplexHtmlKeys { self: AttributeDefine =>
 
-  val stringSvgNsAttr = Map(
-    "href"  -> "xlink",
-    "role"  -> "xlink",
-    "title" -> "xlink",
-    "space" -> "xml",
-    "xlink" -> "xmlns",
-  )
+    def dataAttr(attrPrefix: String)(using pos: MacrosPosition) = addOne {
+      (
+        None,
+        x => if x.startsWith(attrPrefix) then Some(x) else None,
+        (quotes: Quotes) => HtmlAttrMacros.StringAttr(using quotes, attrType(s"${attrPrefix}-[]")))
+    }
 
-  val allAttrs = {
-    stringAttrs ++ intAttrs ++ boolAsOnOffAttrs ++ boolAsTrueFalseAttrs ++ compositeHtmlAttr
-      ++ intSvgAttr ++ doubleSvgAttr ++ stringSvgAttrs
+    stringAttr("style")
+    stringCompositeAttr("class", separator = " ")
+    stringCompositeAttr("rel", separator = " ")
+    stringCompositeAttr("role", separator = " ")
+    dataAttr("data-")
+  }
+
+  /** [[com.raquo.laminar.defs.complex.ComplexSvgKeys]] */
+  trait ComplexSvgKeys { self: AttributeDefine =>
+
+    def stringCompositeSvgAttr(name: String, separator: String)(using pos: MacrosPosition) =
+      stringCompositeAttr(name, separator)
+
+    stringCompositeSvgAttr("class", separator = " ")
+    stringCompositeSvgAttr("role", separator = " ")
   }
 }

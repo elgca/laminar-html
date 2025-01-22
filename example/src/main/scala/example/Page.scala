@@ -1,5 +1,7 @@
 package example
 
+import com.raquo.laminar.api.L.Element
+
 import scala.xml.Elem
 
 def header(name: String) = {
@@ -16,7 +18,7 @@ def header(name: String) = {
   </div>
 }
 
-def bodyContainer(body: Elem) = {
+def bodyContainer(body: Element) = {
   <div class="page-body">
     <div class="container-xl">
       {body}
