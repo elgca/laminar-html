@@ -1,6 +1,8 @@
 package scala.xml
 package binders
 
+import org.scalajs.dom
+
 import scala.quoted.*
 
 object Events {

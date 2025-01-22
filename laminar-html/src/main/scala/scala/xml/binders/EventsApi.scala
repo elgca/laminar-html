@@ -40,7 +40,15 @@ object EventsApi {
     name: String,
     listener: JsListener,
   ): MetatDataBinder = (ns, element) => {
-    element.ref.addEventListener(name, listener)
+    val subscribe = (ctx: MountContext[ReactiveElement.Base]) => {
+      element.ref.addEventListener(name, listener)
+      new Subscription(
+        ctx.owner,
+        cleanup = () => { element.ref.removeEventListener(name, listener) },
+      )
+    }
+
+    val _ = ReactiveElement.bindSubscriptionUnsafe(element)(subscribe)
   }
 
   def addEventListener[T](
@@ -48,12 +56,23 @@ object EventsApi {
     listener: Source[T],
     conversion: ToJsListener[T],
   ): MetatDataBinder = (ns, element) => {
-    var before: Option[JsListener] = None
-    ReactiveElement.bindFn(element, listener.toObservable) { nextValue =>
-      val listener = conversion.apply(nextValue)
-      before.foreach(beforeListener => element.ref.removeEventListener(name, beforeListener))
-      element.ref.addEventListener(name, listener)
-      before = Some(listener)
+    ReactiveElement.bindSubscriptionUnsafe(element) { c =>
+      var before: Option[JsListener] = None
+      def clearBefore()              = before match {
+        case Some(beforeListener) =>
+          element.ref.removeEventListener(name, beforeListener)
+          before = None
+        case None                 =>
+      }
+
+      listener.toObservable.foreach { nextValue =>
+        val listener = conversion.apply(nextValue)
+        clearBefore()
+        element.ref.addEventListener(name, listener)
+        before = Some(listener)
+      }(c.owner)
+
+      new Subscription(c.owner, cleanup = () => clearBefore())
     }
   }
 }

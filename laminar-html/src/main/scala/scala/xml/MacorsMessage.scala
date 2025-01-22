@@ -123,26 +123,39 @@ object MacorsMessage {
   def formatType[T <: AnyKind](using Type[T])(using quotes: Quotes): String = {
     import quotes.*
     import quotes.reflect.*
-    val typeRepr = TypeRepr.of[T]
 
-    val scalaFuncs: List[TypeRepr] = (0 to 22)
-      .map(x => s"scala.Function${x}")
-      .map(fullName => Symbol.classSymbol(fullName))
-      .map(symbol => TypeTree.ref(symbol).tpe)
-      .toList
+    given printer: Printer[TypeRepr] = new Printer[TypeRepr] { self =>
+      val scalaFuncs: List[TypeRepr] = (0 to 22)
+        .map(x => s"scala.Function${x}")
+        .map(fullName => Symbol.classSymbol(fullName))
+        .map(symbol => TypeTree.ref(symbol).tpe)
+        .toList
+      val defaultPrinter             = Printer.TypeReprCode
+      given _self: Printer[TypeRepr] = self
 
-    typeRepr match {
-      case AppliedType(tycon, args) if scalaFuncs.exists(fType => fType =:= tycon) => {
-        if args.length == 1 then {
-          s"() => ${args.last.show}"
-        } else {
-          s"(${args.dropRight(1).map(x => formatType(using x.asType)).mkString(", ")}) => ${args.last.show}"
+      def show(t: TypeRepr): String = {
+        t match {
+          case AppliedType(tycon, args) if scalaFuncs.exists(fType => fType =:= tycon) => {
+            if args.length == 1 then {
+              s"() => ${args.last.show}"
+            } else {
+              s"(${args.dropRight(1).map(show).mkString(", ")}) => ${args.last.show}"
+            }
+          }
+          case AppliedType(tycon, args)                                                => {
+            s"""${tycon.show}[${args.map(show).mkString(", ")}]"""
+          }
+          case text if text <:< TypeRepr.of[Text] || text <:< TypeRepr.of[String]      => "String"
+          case other                                                                   => {
+            val res = defaultPrinter.show(other)
+            if res.startsWith("scala.") && res.count(_ == '.') == 1 then res.drop("scala.".length)
+            else res
+          }
         }
       }
-
-      case text if text <:< TypeRepr.of[Text] => TypeRepr.of[String].show
-      case other                              => other.show
     }
+
+    TypeRepr.of[T].show(using printer)
   }
 
   def unsupportConstProp[T <: AnyKind](value: String | scala.Null)(using
