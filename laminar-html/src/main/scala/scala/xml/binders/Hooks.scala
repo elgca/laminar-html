@@ -33,7 +33,7 @@ object Hooks {
       attrKey: String,
       expr: Expr[T])(using MacrosPosition): Expr[MetatDataBinder] = withHooks(expr)
 
-    override def withExprFromSource[V: Type, CC <: Source[V]: Type](
+    override def withExprFromSourceImpl[V: Type, CC <: Source[V]: Type](
       namespace: Expr[NamespaceBinding => Option[String]],
       prefix: Option[String],
       attrKey: String,

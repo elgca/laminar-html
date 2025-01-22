@@ -34,7 +34,7 @@ object Attrs {
     import quotes.*
     import quotes.reflect.*
 
-    def checkType[T <: AnyKind](using Type[T]): Boolean = {
+    def checkType[T: Type]: Boolean = {
       if TypeRepr.of[T] =:= TypeRepr.of[Text] then true
       else if TypeRepr.of[T] <:< TypeRepr.of[R] || TypeRepr.of[T] <:< TypeRepr.of[Option[R]] then true
       else false
@@ -114,7 +114,8 @@ object Attrs {
 
   }
 
-  class CompositeAttrMacros(using quotes: Quotes) extends AttrMacrosDef[CompositeNormalize.CompositeValidTypes] {
+  class CompositeAttrMacros(using quotes: Quotes, attrTpe: AttrType)
+      extends AttrMacrosDef[CompositeNormalize.CompositeValidTypes] {
 
     import quotes.*
     import quotes.reflect.*
@@ -154,7 +155,7 @@ object Attrs {
       '{ AttrsApi.setCompositeAttributeBinder(${ namespace }, ${ Expr(name) }, ${ itemsToAdd }, Nil) }
     }
 
-    override def withExprFromSource[V: Type, CC <: Source[V]: Type](
+    override def withExprFromSourceImpl[V: Type, CC <: Source[V]: Type](
       namespace: Expr[NamespaceBinding => Option[String]],
       prefix: Option[String],
       attrKey: String,
@@ -174,7 +175,7 @@ object Attrs {
 
   object CompositeAttrMacros {
 
-    def apply()(using quotes: Quotes, attrTpe: AttrType): CompositeAttrMacros = {
+    def apply(using quotes: Quotes, attrTpe: AttrType): CompositeAttrMacros = {
       new CompositeAttrMacros()
     }
   }
@@ -223,7 +224,7 @@ object Attrs {
     }
 
     def stringCompositeAttr(name: String, separator: String)(using pos: MacrosPosition) = addOne {
-      (None, name, (quotes: Quotes) => CompositeAttrMacros()(using quotes, attrType(name)))
+      (None, name, (quotes: Quotes) => CompositeAttrMacros(using quotes, attrType(name)))
     }
 
     def stringNsAttr(name: String, namespace: String)(using pos: MacrosPosition) = addOne {

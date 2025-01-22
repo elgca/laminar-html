@@ -223,14 +223,13 @@ object MacrosTool {
       case None        =>
 
     key match {
-      case Hooks.HooksMacros(hooks) if prefix.isEmpty    => hooks.withHooks(valueExpr)
-      case Events.EventsMacros(events) if prefix.isEmpty => events.addEventListener(valueExpr)
-      case Props.PropMacros(macors) if prefix.isEmpty    =>
+      case Hooks.HooksMacros(hooks) if prefix.isEmpty => hooks.withHooks(valueExpr)
+      case Props.PropMacros(macors) if prefix.isEmpty =>
         constAnyValue(valueExpr) match {
           case Some(value) => value.map(str => macors.withConst[T](str)).getOrElse(EmptyBinder)
           case None        => macors.withExpr(valueExpr)
         }
-      case _                                             => ???
+      case _                                          => ???
     }
   }
 
@@ -251,13 +250,13 @@ object MacrosTool {
     val constValue = constValueIncludeSeq(valueExpr).map(_.mkString(" "))
 
     val binderExpr: Expr[MetatDataBinder] = (prefix, attrKey, Type.of[T]) match {
-      case Attrs(name, macros) =>
+      case AttrMacrosDef(name, macros) =>
         constValue.fold {
           macros.withExpr(namespace, prefix, name, valueExpr)
         } { value =>
           macros.withConst(namespace, prefix, name, value)
         }
-      case _                   =>
+      case _                           =>
         report.info(s"NotFound===>" + namespaceURI)
         dattributeMacro(
           namespaceURI = namespaceURI,
@@ -304,16 +303,14 @@ object MacrosTool {
     val namespace = namespaceFunction(namespaceURI, prefix)
 //    val constValue = constValueIncludeSeq(valueExpr).map(_.mkString(" "))
     (prefix, key, Type.of[V]) match {
-      case Attrs(name, macros) =>
+      case AttrMacrosDef(name, macros) =>
         macros.withExprFromSource(namespace, prefix, name, sourceValue)
-      case _                   => {
+      case _                           => {
         key match {
-          case "value" if prefix.isEmpty                     => {
+          case "value" if prefix.isEmpty                  => {
             Props.fromSource("value", sourceValue)
           }
-          case Events.EventsMacros(events) if prefix.isEmpty =>
-            events.addEventListenerFromSource(sourceValue)
-          case Hooks.HooksMacros(hooks) if prefix.isEmpty    =>
+          case Hooks.HooksMacros(hooks) if prefix.isEmpty =>
             MacorsMessage.raiseError(s"Unable to bind hooks from : ${MacorsMessage.formatType[CC]}")
 
           case otherKeys => {

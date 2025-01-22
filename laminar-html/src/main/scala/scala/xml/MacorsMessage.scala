@@ -171,6 +171,10 @@ object MacorsMessage {
     TypeRepr.of[T].show(using printer)
   }
 
+  inline def getTypeString[T]: String = ${ getTypeStringMacros[T] }
+
+  def getTypeStringMacros[T: Type](using quotes: Quotes): Expr[String] = Expr(formatType[T])
+
   def unsupportConstProp[T <: AnyKind](value: String | scala.Null)(using tpe: Type[T])(using
     quotes: Quotes,
     position: MacrosPosition,
@@ -200,7 +204,7 @@ object MacorsMessage {
 
   def logInfo(msg: String)(using quotes: Quotes, position: MacrosPosition): Unit = {
     import quotes.reflect.*
-    if ShowTypeHints then report.info(msg)
+    if ShowTypeHints then report.info(msg + s"\n${position}")
   }
 
   case class AttrType(str: String) extends AnyVal {

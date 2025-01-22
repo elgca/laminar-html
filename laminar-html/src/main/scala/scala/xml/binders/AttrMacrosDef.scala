@@ -42,7 +42,7 @@ trait AttrMacrosDef[R](using Quotes, Type[R], AttrType) {
     expr: Expr[T],
   )(using MacrosPosition): Expr[MetatDataBinder] = block[T](withExprImpl(namespace, prefix, attrKey, expr))
 
-  def withExprFromSource[V: Type, CC <: Source[V]: Type](
+  def withExprFromSourceImpl[V: Type, CC <: Source[V]: Type](
     namespace: Expr[NamespaceBinding => Option[String]],
     prefix: Option[String],
     attrKey: String,
@@ -62,6 +62,15 @@ trait AttrMacrosDef[R](using Quotes, Type[R], AttrType) {
       }
     }
   }
+
+  def withExprFromSource[V: Type, CC <: Source[V]: Type](
+    namespace: Expr[NamespaceBinding => Option[String]],
+    prefix: Option[String],
+    attrKey: String,
+    sourceValue: Expr[CC],
+  )(using MacrosPosition): Expr[MetatDataBinder] = block[V] {
+    withExprFromSourceImpl(namespace, prefix, attrKey, sourceValue)
+  }
 }
 
 type AttrMacrosDefFactory = (quotes: Quotes) => AttrMacrosDef[?]
@@ -71,6 +80,8 @@ object AttrMacrosDef {
   def unapply[T](
     tuple: (Option[String], String, Type[T]),
   )(using quotes: Quotes): Option[(String, AttrMacrosDef[?])] = {
-    Attrs.unapply(tuple)
+    Events
+      .unapply(tuple)
+      .orElse(Attrs.unapply(tuple))
   }
 }
