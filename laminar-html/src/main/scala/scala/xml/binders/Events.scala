@@ -30,7 +30,7 @@ object Events {
   def unknownEvents(eventKey: String)(using
     quotes: Quotes,
   ): AttrMacrosDef[?] = {
-    EventsMacros[dom.Event](eventKey)(using quotes, AttrType(s"Unknown Events :<${eventKey}>[${dom.Event}]"))
+    EventsMacros[dom.Event](eventKey)(using quotes, AttrType(s"Unknown Events :<${eventKey}>[dom.Event]"))
   }
 
   import EventsApi.*
