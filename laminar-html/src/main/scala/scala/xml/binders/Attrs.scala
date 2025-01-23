@@ -13,15 +13,19 @@ object Attrs {
 
   def unapply[T](
     tuple: (Option[String], String, Type[T]),
-  )(using quotes: Quotes): Option[(String, AttrMacrosDef[?])] = {
+  )(using quotes: Quotes): Option[(String, AttrMacrosDef[?], Seq[(String, String)])] = {
     val (prefix: Option[String], attrKey: String, tpe: Type[T]) = tuple
-    attributeDefine.value.iterator
-      .flatMap { case (pfx, attr, factory) =>
-        attr(attrKey)
-          .filter(_ => prefix == pfx)
-          .map(key => key -> factory(quotes))
-      }
+
+    val matched = attributeDefine.value.iterator.flatMap { case (pfx, attr, factory) =>
+      attr(attrKey)
+        .filter(_ => prefix == pfx)
+        .map(key => key -> factory(quotes))
+    }.toSeq
+
+    val typeHints = matched.map(_._2.supportedTypesMessage)
+    matched
       .headOrMatch(_._2.checkType(using tpe))
+      .map(x => (x._1, x._2, typeHints))
   }
 
   def unknownAttribute(

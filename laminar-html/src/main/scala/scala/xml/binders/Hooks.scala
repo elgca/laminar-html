@@ -8,7 +8,7 @@ object Hooks {
 
   def unapply[T](
     tuple: (Option[String], String, Type[T]),
-  )(using quotes: Quotes): Option[(String, AttrMacrosDef[?])] = {
+  )(using quotes: Quotes): Option[(String, AttrMacrosDef[?], Seq[(String, String)])] = {
     val (pfx, inputKey, tpe) = tuple
     hooks.view
       .filterKeys(key => {
@@ -17,6 +17,7 @@ object Hooks {
       })
       .mapValues(_.apply(quotes))
       .headOption
+      .map(x => (x._1, x._2, Seq(x._2.supportedTypesMessage)))
   }
 
   def unapply(inputKey: String)(using Quotes): Option[String] = {

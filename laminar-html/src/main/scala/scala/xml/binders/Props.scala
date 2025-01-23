@@ -11,15 +11,19 @@ object Props {
 
   def unapply[T](
     tuple: (Option[String], String, Type[T]),
-  )(using quotes: Quotes): Option[(String, AttrMacrosDef[?])] = {
+  )(using quotes: Quotes): Option[(String, AttrMacrosDef[?], Seq[(String, String)])] = {
     val (prefix: Option[String], attrKey: String, tpe: Type[T]) = tuple
-    propsDefine.value.iterator
-      .flatMap { case (propName, attr, factory) =>
-        attr(attrKey)
-          .filter(_ => prefix.isEmpty)
-          .map(* => propName -> factory(quotes))
-      }
+
+    val matchedProps = propsDefine.value.iterator.flatMap { case (propName, attr, factory) =>
+      attr(attrKey)
+        .filter(_ => prefix.isEmpty)
+        .map(* => propName -> factory(quotes))
+    }.toSeq
+
+    val typeHints = matchedProps.map(_._2.supportedTypesMessage)
+    matchedProps
       .headOrMatch(_._2.checkType(using tpe))
+      .map(x => (x._1, x._2, typeHints))
   }
 
   class PropMacros[R](

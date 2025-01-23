@@ -43,14 +43,21 @@ object MacorsMessage {
     position: MacrosPosition,
     attrType: AttrType,
   ): Unit = logInfo {
+    val (head, info) = supportedTypesMessage[Except]
+    s"$head\n$info"
+  }
+
+  def supportedTypesMessage[Except <: AnyKind](using
+    exceptTpe: Type[Except],
+  )(using
+    quotes: Quotes,
+    position: MacrosPosition,
+    attrType: AttrType,
+  ): (String, String) = {
     if isChinese then {
-      s"""[${attrType}]支持的数据类型:
-         |${typeExplain[Except]}
-         |""".stripMargin
+      s"""[${attrType}]支持的数据类型:""" -> s"""${typeExplain[Except]}""".stripMargin
     } else {
-      s"""[${attrType}]Supported data types:
-         | ${typeExplain[Except]}
-         | """.stripMargin
+      s"""[${attrType}]Supported data types:""" -> s"""${typeExplain[Except]}""".stripMargin
     }
   }
 
@@ -184,7 +191,7 @@ object MacorsMessage {
 
   def logInfo(msg: String)(using quotes: Quotes, position: MacrosPosition): Unit = {
     import quotes.reflect.*
-    if ShowTypeHints then report.info(msg + s"\n${position}")
+    if ShowTypeHints then report.info(msg)
   }
 
   case class AttrType(str: String) extends AnyVal {

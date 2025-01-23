@@ -2,7 +2,7 @@ package scala.xml
 package binders
 
 import scala.quoted.*
-import scala.xml.MacorsMessage.AttrType
+import scala.xml.MacorsMessage.{????, AttrType}
 
 trait AttrMacrosDef[R](using Quotes, Type[R], AttrType) {
 
@@ -17,9 +17,10 @@ trait AttrMacrosDef[R](using Quotes, Type[R], AttrType) {
   }
   def supportSource: Boolean               = true
 
+  def supportedTypesMessage: (String, String) = MacorsMessage.supportedTypesMessage[R]
+
   protected def block[T: Type](body: => Expr[MetatDataBinder])(using MacrosPosition): Expr[MetatDataBinder] = {
     if !checkType[T] then MacorsMessage.expectationType[T, R]
-    MacorsMessage.showSupportedTypes[R]
     body
   }
 
@@ -98,12 +99,25 @@ object AttrMacrosDef {
       .orElse(Props.unapply(tuple))
       .orElse(Attrs.unapply(tuple))
       .orElse {
-        Seq(
+        val anyMatch = Seq(
           Attrs.unknownAttribute(prefix, attrKey),
           Events.unknownEvents(attrKey),
-        ).iterator
+        )
+        anyMatch.iterator
           .headOrMatch(_.checkType(using tpe))
-          .map(m => attrKey -> m)
+          .map(m => (attrKey, m, anyMatch.map(_.supportedTypesMessage)))
+      }
+      .map { case (key, macros, hints) =>
+        val typeHints =
+          hints
+            .groupBy(_._2) // 相同类型的聚合
+            .view
+            .mapValues(v => v.map(_._1).distinct.mkString("\n"))
+            .map(_.swap)
+            .map(x => s"${x._1}\n${x._2}")
+            .mkString("\n", "\n", "")
+        MacorsMessage.logInfo(typeHints)
+        (key, macros)
       }
   }
 }

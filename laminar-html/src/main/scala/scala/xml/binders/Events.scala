@@ -13,15 +13,18 @@ object Events {
 
   def unapply[T](
     tuple: (Option[String], String, Type[T]),
-  )(using quotes: Quotes): Option[(String, AttrMacrosDef[?])] = {
+  )(using quotes: Quotes): Option[(String, AttrMacrosDef[?], Seq[(String, String)])] = {
     val (_: Option[String], attrKey: String, tpe: Type[T]) = tuple
 
-    eventsDefine.value.iterator
-      .flatMap { case (name, attr, factory) =>
-        attr(attrKey)
-          .map(key => key -> factory(quotes))
-      }
+    val events = eventsDefine.value.iterator.flatMap { case (name, attr, factory) =>
+      attr(attrKey)
+        .map(key => key -> factory(quotes))
+    }.toSeq
+
+    val typeHints = events.map(_._2.supportedTypesMessage).distinct
+    events
       .headOrMatch(_._2.checkType(using tpe))
+      .map(x => (x._1, x._2, typeHints))
   }
 
   def unknownEvents(eventKey: String)(using

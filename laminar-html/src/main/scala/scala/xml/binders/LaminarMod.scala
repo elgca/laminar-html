@@ -37,11 +37,11 @@ object LaminarMod {
 
   def unapply[T](
     tuple: (Option[String], String, Type[T]),
-  )(using quotes: Quotes): Option[(String, AttrMacrosDef[?])] = {
+  )(using quotes: Quotes): Option[(String, AttrMacrosDef[?], Seq[(String, String)])] = {
     val (_, _, tpe)          = tuple
     given attrType: AttrType = AttrType("LaminarMod")
     val mod                  = new LaminarModMacros()
-    if (mod.checkType(using tpe)) then Some("LaminarMod", mod)
+    if (mod.checkType(using tpe)) then Some("LaminarMod", mod, Seq(mod.supportedTypesMessage))
     else None
   }
 
