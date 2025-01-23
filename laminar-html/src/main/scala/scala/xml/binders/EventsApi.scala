@@ -108,7 +108,7 @@ object EventsApi {
     listener: Source[T],
     conversion: ToJsListener[T],
   ): MetatDataBinder = (ns, element) => {
-    ReactiveElement.bindSubscriptionUnsafe(element) { c =>
+    val _ = ReactiveElement.bindSubscriptionUnsafe(element) { c =>
       var before: Option[EventListener] = None
       def clearBefore()                 = before match {
         case Some(beforeListener) =>
