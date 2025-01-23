@@ -47,7 +47,7 @@ npm run dev
 # usage
 
 ```scala
-"io.github.elgca" %%% "laminar-html" % "0.1.6"
+"io.github.elgca" %%% "laminar-html" % "0.2.1"
 ```
 
 - fully interoperable with Laminar.

@@ -28,7 +28,7 @@ Valid:
 # 使用
 
 ```scala
-"io.github.elgca" %%% "laminar-html" % "0.2.0"
+"io.github.elgca" %%% "laminar-html" % "0.2.1"
 ```
 
 - 具备跟Laminar的完全互操作性
