@@ -1,7 +1,7 @@
 package scala.xml
 
+import com.raquo.airstream.core.Signal
 import com.raquo.ew
-import com.raquo.ew.{JsArray, JsVector}
 
 import scala.annotation.{implicitNotFound, nowarn}
 import scala.collection.immutable.Seq
@@ -15,8 +15,7 @@ class NodeBuffer extends Seq[Node] {
   def length: Int                                   = underlying.length
   override protected def className: String          = "NodeBuffer"
 
-  import NodeBuffer.*
-  import NodeBuffer.laminarRenderable
+  import NodeBuffer.{*, given}
 
   def &+(component: Node): NodeBuffer = {
     underlying.addOne(component)
@@ -46,14 +45,23 @@ class NodeBuffer extends Seq[Node] {
     this
   }
 
+  def &+[Component: RenderableNode](source: js.Promise[Component]): NodeBuffer = {
+    val src = Signal
+      .fromJsPromise(source)
+      .map(opt => opt.map(c => summon[LaminarRenderableNode[Component]].asNode(c)))
+    &+(L.child.maybe <-- src)
+    this
+  }
+
   // 为了解决string的问题, string被视作Comparable[_]会导致进入该分支,这里强制限定类型范围,但是应该进入
   // com.raquo.laminar.modifiers.RenderableSeq默认的所有类型都在这里了
-  type LaminarRenderableSeqType[A] = collection.Seq[A] | //
-    scala.Array[A] | //
-    js.Array[A] | //
-    ew.JsArray[A] | //
-    ew.JsVector[A] | //
-    LaminarSeq[A]
+  type LaminarRenderableSeqType[A] =
+    collection.Seq[A] | //
+      scala.Array[A] | //
+      js.Array[A] | //
+      ew.JsArray[A] | //
+      ew.JsVector[A] | //
+      LaminarSeq[A]
 
   def &+[Collection[x] <: LaminarRenderableSeqType[x]: LaminarRenderableSeq, Component: RenderableNode](
     source: Source[Collection[Component]]): NodeBuffer = {
@@ -64,6 +72,12 @@ class NodeBuffer extends Seq[Node] {
   def &+[Collection[x] <: LaminarRenderableSeqType[x]: LaminarRenderableSeq](
     source: Source[Collection[ChildNodeBase]]): NodeBuffer = {
     &+(L.children <-- source)
+    this
+  }
+
+  @annotation.targetName("sourceOption")
+  def &+[Component: RenderableNode](source: Source[Option[Component]]): NodeBuffer = {
+    &+(L.child.maybe <-- source)
     this
   }
 
@@ -90,7 +104,7 @@ object NodeBuffer {
     }
 
   // RenderableNode 所有可渲染节点, 应该是一个 ChildNode
-  @implicitNotFound("无法提供转换 RenderableNode[${Component}]")
+  @implicitNotFound("it is not RenderableNode: [${Component}]")
   trait RenderableNode[Component] {
     def asNode(value: Component): ChildNode
   }
