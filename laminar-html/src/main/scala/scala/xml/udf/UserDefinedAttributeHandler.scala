@@ -7,7 +7,7 @@ import com.raquo.laminar.nodes.ReactiveElement
   * @tparam PropName
   *   StringConstType, attribuename
   * @tparam DataType
-  *   except type
+  *   expectationType
   */
 trait UserDefinedAttributeHandler[PropName <: String, DataType] {
 
