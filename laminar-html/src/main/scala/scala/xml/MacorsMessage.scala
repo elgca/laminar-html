@@ -132,6 +132,7 @@ object MacorsMessage {
           case OrType(left, right)  => s"(${show(left)}) | (${show(right)})"
 
           case TypeBounds(low, hi) if low =:= TypeRepr.of[Nothing] => s"_ <: ${show(hi)}"
+          case TypeBounds(low, hi) if hi =:= TypeRepr.of[Any]      => s"_ >: ${show(low)}"
 
           case TypeBounds(low, hi) => s"_ >: ${show(low)} <: ${show(hi)}"
           case other               => {

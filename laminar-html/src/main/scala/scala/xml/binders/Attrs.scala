@@ -24,6 +24,15 @@ object Attrs {
       .headOrMatch(_._2.checkType(using tpe))
   }
 
+  def unknownAttribute(
+    prefix: Option[String],
+    name: String,
+  )(using quotes: Quotes): HtmlAttrMacros[?] = {
+    import quotes.reflect._
+    given attrType: AttrType = AttrType(s"Unknown attribute :<${prefix.map(_ + ":").getOrElse("")}${name}>")
+    HtmlAttrMacros.StringAttr
+  }
+
   class HtmlAttrMacros[R](
     constFormat: String => String,
     encode: Expr[R => String],
@@ -228,14 +237,6 @@ object Attrs {
         (quotes: Quotes) => HtmlAttrMacros.StringAttr(using quotes, attrType(s"[${namespace}:${name}]")))
     }
 
-  }
-
-  def unknownAttribute(
-    prefix: Option[String],
-    name: String,
-  )(using quotes: Quotes): HtmlAttrMacros[String] = {
-    given attrType: AttrType = AttrType(s"UnknownAttr<${prefix.map(_ + ":").getOrElse("")}${name}>")
-    HtmlAttrMacros.StringAttr
   }
 
   // ------------ HtmlAttrs ------------

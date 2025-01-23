@@ -24,6 +24,12 @@ object Events {
       .headOrMatch(_._2.checkType(using tpe))
   }
 
+  def unknownEvents(eventKey: String)(using
+    quotes: Quotes,
+  ): AttrMacrosDef[?] = {
+    EventsMacros[dom.Event](eventKey)(using quotes, AttrType(s"Unknown Events :<${eventKey}>[${dom.Event}]"))
+  }
+
   import EventsApi.*
   import EventsApi.ToJsListener.ListenerFuncTypes
 
@@ -36,6 +42,9 @@ object Events {
       extends AttrMacrosDef[ListenerFuncTypes[Ev]] {
 
     override def checkType[T: Type]: Boolean = {
+      import quotes.reflect.*
+//      println(s"checkType====> ${TypeRepr.of[T] <:< TypeRepr.of[ListenerFuncTypes[Ev]]}")
+//      TypeRepr.of[T] <:< TypeRepr.of[ListenerFuncTypes[Ev]] &&
       conversion[T].isDefined
     }
 

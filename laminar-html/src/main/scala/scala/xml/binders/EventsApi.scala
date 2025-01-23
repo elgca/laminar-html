@@ -32,7 +32,7 @@ object EventsApi {
     }
 
     type ListenerFuncTypes[Event <: dom.Event] = (() => Unit) | //
-      ((? <: Event) => Unit) | //
+      ((? >: Event) => Unit) | //
       (String => Unit) | //
       (Boolean => Unit) | //
       (List[dom.File] => Unit) | //

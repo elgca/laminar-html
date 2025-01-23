@@ -2,6 +2,7 @@ package test
 
 import com.raquo.airstream.state.Var
 import com.raquo.laminar.api.eventPropToProcessor
+import org.scalajs.dom
 
 import scala.scalajs.js
 val boolVar = Var(false)
@@ -43,7 +44,7 @@ val testVar = {
     guo ="???"
     minLength ="1"
     width="121"
-    onclick={clickFunc}
+    onclick={(e: dom.DragEvent) => {}}
     >
   {L.onClick --> println("click-------->")}
   </button>

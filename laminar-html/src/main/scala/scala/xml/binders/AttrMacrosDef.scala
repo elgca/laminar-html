@@ -89,12 +89,21 @@ object AttrMacrosDef {
   def unapply[T](
     tuple: (Option[String], String, Type[T]),
   )(using quotes: Quotes): Option[(String, AttrMacrosDef[?])] = {
+    val (prefix, attrKey, tpe) = tuple
+
     LaminarMod
       .unapply(tuple)
       .orElse(Events.unapply(tuple))
       .orElse(Hooks.unapply(tuple))
       .orElse(Props.unapply(tuple))
       .orElse(Attrs.unapply(tuple))
-      .orElse(Some((tuple._2, Attrs.unknownAttribute(tuple._1, tuple._2))))
+      .orElse {
+        Seq(
+          Attrs.unknownAttribute(prefix, attrKey),
+          Events.unknownEvents(attrKey),
+        ).iterator
+          .headOrMatch(_.checkType(using tpe))
+          .map(m => attrKey -> m)
+      }
   }
 }
