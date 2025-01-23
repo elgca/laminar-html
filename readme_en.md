@@ -104,7 +104,7 @@ error type hints:
 ![img.png](images/img.png)
 
 type hints info:
-![typeinfo.png](images/typeinfo.png)
+![typehints.png](images/typehints.png)![typeinfo.png](images/typeinfo.png)
 
 
 ## onmount/onunmount Lifecycle hooks
@@ -125,3 +125,37 @@ val element = () => {
 }
 ```
 
+# Allows embedding as a child node
+
+1. RenderableNode:
+   1. app primary type and java.number.Number, use `_.toString` as a `TextNode`
+   2. Laminar的ChildNodeBase
+   3. xml node
+   4. The above types of Unions
+4. any Laminar Modifier
+5. Tuple,`Tuple.Union <: [RenderableNode|Modifier|Seq[...]]`
+5. `IterableOnce[CC]`:
+   1. `Option[RenderableNode/Modifier]`
+   7. `Seq[RenderableNode/Modifier]`
+   8. ...
+9. `Var/Signal`
+   1. `Source[RenderableNode]`
+   11. `Source[Collection[RenderableNode]]`,
+       12. `Collection <: Seq | Array| js.Array| ew.JsArray | ew.JsVector | laminar.Seq`
+   13. `Source[Option[RenderableNode]]`
+14. `js.Promise[RenderableNode]`
+    1. This is useful when using js.dynamicImport, 
+       which allows you to complete the rest of the work and mount it when the load is complete
+
+# UserDefinedAttributeHandler
+
+given `UserDefinedAttributeHandler[PropName,DataType]` Implement processing logic that allows you to customize attributes
+
+```scala 3
+given UserDefinedAttributeHandler["ggccf", String] with
+  def encode(constValue: String): String = constValue
+  override def withValue(....):Unit = {...}
+  override def withSourceValue(...):Unit = {...}
+```
+
+![udattr.png](images/udattr.png)

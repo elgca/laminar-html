@@ -36,10 +36,10 @@ object PropsApi {
   }
 
   // value更新的特殊处理函数
-  def valuePropUpdater(source: Source[String]): MetatDataBinder = (*, element) => {
+  def valuePropUpdater(propKey: String, source: Source[String]): MetatDataBinder = (*, element) => {
     ReactiveElement.bindFn(element, source.toObservable) { nextValue =>
-      if !getHtmlPropertyRaw[String](element.ref, "value").contains(nextValue) then {
-        setHtmlPropertyRaw(element.ref, "value", nextValue)
+      if !getHtmlPropertyRaw[String](element.ref, propKey).contains(nextValue) then {
+        setHtmlPropertyRaw(element.ref, propKey, nextValue)
       }
     }
   }

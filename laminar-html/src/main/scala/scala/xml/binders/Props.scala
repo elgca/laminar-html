@@ -82,7 +82,7 @@ object Props {
         import quotes.*
         sourceValue match {
           case sourceStr: Expr[Source[String]] @unchecked if TypeRepr.of[R] <:< TypeRepr.of[String] =>
-            '{ PropsApi.valuePropUpdater(${ sourceStr }) }
+            '{ PropsApi.valuePropUpdater("value", ${ sourceStr }) }
 
           case _ => MacorsMessage.expectationType[CC, String | Option[String] | Source[String]]
         }

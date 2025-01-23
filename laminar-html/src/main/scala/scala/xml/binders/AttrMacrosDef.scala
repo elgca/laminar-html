@@ -98,6 +98,7 @@ object AttrMacrosDef {
       .orElse(Hooks.unapply(tuple))
       .orElse(Props.unapply(tuple))
       .orElse(Attrs.unapply(tuple))
+      .orElse(UdfHandlers.unapply(tuple))
       .orElse {
         val anyMatch = Seq(
           Attrs.unknownAttribute(prefix, attrKey),

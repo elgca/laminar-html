@@ -82,12 +82,13 @@ L.renderOnDomContentLoaded(document.getElementById("app"), laminarElem)
 ![img.png](images/img.png)
 
 类型信息提示:
-![typeinfo.png](images/typeinfo.png)
+![typehints.png](images/typehints.png)![typeinfo.png](images/typeinfo.png)
 
 
 ## onmount/onunmount生命周期事件属性 
 
-属性名不区分大小写,所以可以写如果愿意可以使用例如: onMount/onUnmount
+属性名不区分大小写,所以可以写如果愿意可以使用例如: 
+onMount/onUnmount
 
 ```scala
 val element = () => {
@@ -100,3 +101,37 @@ val element = () => {
 }
 ```
 
+
+# 允许作为子节点嵌入
+
+1. RenderableNode, 可渲染的组件
+   1. 所有基础数据类型以及java.number.Number, 将会以_.toString的方式作为TextNode插入
+   2. Laminar的ChildNodeBase
+   3. xml节点
+   4. 以上类型的Union类型
+   4. 任意的Laminar Modifier
+   5. Tuple,`Tuple.Union <: [RenderableNode|Modifier|Seq[...]]`
+5. `IterableOnce[CC]`:
+   1. `Option[RenderableNode/Modifier]`
+   7. `Seq[RenderableNode/Modifier]`
+   8. ...
+9. `Var/Signal`
+   1. `Source[RenderableNode]`
+   11. `Source[Collection[RenderableNode]]`,
+       12. `Collection <: Seq | Array| js.Array| ew.JsArray | ew.JsVector | laminar.Seq`
+   13. `Source[Option[RenderableNode]]`
+   14. `js.Promise[RenderableNode]`
+1. 使用 js.dynamicImport时候很有用, 可以允许你先完成其他部分,当加载完成后再挂载
+
+# 自定义属性处理
+
+给定隐式 `UserDefinedAttributeHandler[PropName,DataType]` 实现可以自定义属性的处理逻辑
+
+```scala 3
+given UserDefinedAttributeHandler["ggccf", String] with
+  def encode(constValue: String): String = constValue
+  override def withValue(....):Unit = {...}
+  override def withSourceValue(...):Unit = {...}
+```
+
+![udattr.png](images/udattr.png)
