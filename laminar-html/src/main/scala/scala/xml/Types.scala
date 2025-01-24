@@ -38,10 +38,3 @@ val L               = com.raquo.laminar.api.L
 type Source[+A]    = com.raquo.airstream.core.Source[A]
 type ChildNodeBase = ChildNode.Base
 type Subscription  = com.raquo.airstream.ownership.Subscription
-
-class ElementNodeBase(
-  override val tag: Tag[ReactiveElement[Element]],
-  override val ref: Element,
-) extends ReactiveElementBase {
-  override def onBoundKeyUpdater(key: Key): Unit = ()
-}

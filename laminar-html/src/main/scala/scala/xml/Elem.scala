@@ -38,13 +38,6 @@ object Elem {
 
   given int: LaminarRenderableNode[Elem] = LaminarRenderableNode(x => x.reactiveElement)
 
-  class ElemTag(
-    val name: String,
-    val void: Boolean = false,
-  ) extends Tag[ElementNodeBase] derives CanEqual {
-    override def jsTagName: String = name
-  }
-
   def createElement(tagName: String, prefix: String | scala.Null, scope: NamespaceBinding): dom.Element = {
     scope.namespaceURI(prefix) match
       case Some(ns) => dom.document.createElementNS(ns, tagName)
