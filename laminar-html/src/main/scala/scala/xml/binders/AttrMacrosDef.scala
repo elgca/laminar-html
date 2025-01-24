@@ -2,9 +2,11 @@ package scala.xml
 package binders
 
 import scala.quoted.*
-import scala.xml.MacorsMessage.{????, AttrType}
+import scala.xml.MacorsMessage.AttrType
 
 trait AttrMacrosDef[R](using Quotes, Type[R], AttrType) {
+
+  def expectType: Type[R] = Type.of[R]
 
   def checkType[T](using Type[T]): Boolean = {
     import quotes.*
@@ -15,7 +17,10 @@ trait AttrMacrosDef[R](using Quotes, Type[R], AttrType) {
     else if TypeRepr.of[T] <:< TypeRepr.of[R] || TypeRepr.of[T] <:< TypeRepr.of[Option[R]] then true
     else false
   }
-  def supportSource: Boolean               = true
+
+  def supportSource: Boolean = true
+
+  def supportConst: Boolean = true // 是否支持 <div attr="" />
 
   def supportedTypesMessage: (String, String) = MacorsMessage.supportedTypesMessage[R]
 

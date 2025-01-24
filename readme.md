@@ -129,7 +129,6 @@ val element = () => {
 
 ```scala 3
 given UserDefinedAttributeHandler["ggccf", String] with
-  def encode(constValue: String): String = constValue
   override def withValue(....):Unit = {...}
   override def withSourceValue(...):Unit = {...}
 ```

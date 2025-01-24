@@ -3,16 +3,15 @@ package scala.xml.udf
 import com.raquo.laminar.api.L.Source
 import com.raquo.laminar.nodes.ReactiveElement
 
+import scala.xml.MacorsMessage
+
 /** UserDefinedAttributeHandler
   * @tparam PropName
   *   StringConstType, attribuename
   * @tparam DataType
   *   expectationType
   */
-trait UserDefinedAttributeHandler[PropName <: String, DataType] {
-
-  // conversion const value to type
-  def encode(constValue: String): DataType
+trait UserDefinedAttributeHandler[PropName, DataType] {
 
   def withValue(
     namespaceURI: Option[String],

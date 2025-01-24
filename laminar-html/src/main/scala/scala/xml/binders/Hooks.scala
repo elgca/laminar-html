@@ -35,6 +35,8 @@ object Hooks {
   trait HooksMacros[R](using Quotes, Type[R], AttrType) extends AttrMacrosDef[R] {
     def withHooks[T: Type](funExpr: Expr[T]): Expr[MetatDataBinder]
 
+    override def supportSource: Boolean = false
+
     override protected def withConstImpl[T: Type](
       namespace: Expr[NamespaceBinding => Option[String]],
       prefix: Option[String],

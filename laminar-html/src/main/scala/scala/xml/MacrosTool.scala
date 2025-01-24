@@ -157,6 +157,45 @@ object MacrosTool {
     '{ MetaData.EmptyBinder }
   }
 
+  def attributeMacro[T: Type](
+    namespaceURI: Option[String],
+    prefix: Option[String],
+    attrKey: String,
+    expr: Expr[T],
+  )(using quotes: Quotes): Expr[MetatDataBinder] = {
+    import quotes.*
+    import quotes.reflect.*
+
+    val namespace  = namespaceFunction(namespaceURI, prefix)
+    val constValue = constValueIncludeSeq(expr).map(_.mkString(" "))
+
+    // 如果是常量,优先使用String匹配
+    val typeIsString: Boolean = (TypeRepr.of[T] <:< TypeRepr.of[Text]) || (TypeRepr.of[T] <:< TypeRepr.of[String])
+    val matchTpe              = if typeIsString then Type.of[String] else Type.of[T]
+
+    val binderExpr: Expr[MetatDataBinder] = (prefix, attrKey, matchTpe) match {
+      case AttrMacrosDef(name, macros) =>
+        if !macros.supportConst then {
+          constValue
+            .filter(x => typeIsString)
+            .fold(
+              macros.withExpr(namespace, prefix, name, expr),
+            )(value => {
+              macros.withExpr(namespace, prefix, name, Expr(value))
+            })
+        } else {
+          constValue
+            .fold(
+              macros.withExpr(namespace, prefix, name, expr),
+            )(value => {
+              macros.withConst(namespace, prefix, name, value)
+            })
+        }
+      case _                           => ????
+    }
+    binderExpr
+  }
+
   def unprefixedattributeMacro[T: Type](
     attr: Expr[UnprefixedAttribute[T]],
   )(using quotes: Quotes): Expr[MetaData] = {
@@ -170,21 +209,12 @@ object MacrosTool {
     val prefix: Option[String]                   = None
     val namespaceURI: Option[String]             = None
 
-    val namespace  = namespaceFunction(namespaceURI, prefix)
-    val constValue = constValueIncludeSeq(valueExpr).map(_.mkString(" "))
-
-    //如果是常量,优先使用String匹配
-    val matchTpe = constValue.fold(Type.of[T])(_ => Type.of[String])
-
-    val binderExpr: Expr[MetatDataBinder] = (prefix, attrKey, matchTpe) match {
-      case AttrMacrosDef(name, macros) =>
-        constValue.fold {
-          macros.withExpr(namespace, prefix, name, valueExpr)
-        } { value =>
-          macros.withConst(namespace, prefix, name, value)
-        }
-      case _                           => ????
-    }
+    val binderExpr: Expr[MetatDataBinder] = attributeMacro(
+      namespaceURI,
+      prefix,
+      attrKey,
+      valueExpr,
+    )
 
     '{ MetaData(${ binderExpr }, ${ nextExpr }) }
   }
@@ -203,21 +233,13 @@ object MacrosTool {
     val prefix       = Some(attrPrefix)
     // 如果我可以获取默认配置获取的namespaceURI,那么就不需要通过Elem输入了
     val namespaceURI = TopScope.namespaceURI(attrPrefix)
-    val namespace    = namespaceFunction(namespaceURI, prefix)
-    val constValue   = constValueIncludeSeq(valueExpr).map(_.mkString(" "))
 
-    //如果是常量,优先使用String匹配
-    val matchTpe = constValue.fold(Type.of[T])(_ => Type.of[String])
-
-    val binderExpr: Expr[MetatDataBinder] = (prefix, attrKey, matchTpe) match {
-      case AttrMacrosDef(name, macros) =>
-        constValue.fold {
-          macros.withExpr(namespace, prefix, name, valueExpr)
-        } { value =>
-          macros.withConst(namespace, prefix, name, value)
-        }
-      case _                           => ????
-    }
+    val binderExpr: Expr[MetatDataBinder] = attributeMacro(
+      namespaceURI,
+      prefix,
+      attrKey,
+      valueExpr,
+    )
 
     '{ MetaData(${ binderExpr }, ${ nextExpr }) }
   }
@@ -233,6 +255,7 @@ object MacrosTool {
     val namespace = namespaceFunction(namespaceURI, prefix)
     (prefix, key, Type.of[V]) match {
       case AttrMacrosDef(name, macros) =>
+        if !macros.supportSource then MacorsMessage.expectationType(using Type.of[CC], macros.expectType)
         macros.withExprFromSource(namespace, prefix, name, sourceValue)
       case _                           => ????
     }

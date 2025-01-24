@@ -44,7 +44,6 @@ val testVar = {
     guo ="???"
     minLength ="1"
     width="121"
-    onclick={(e: dom.DragEvent) => {}}
     >
   {L.onClick --> println("click-------->")}
   </button>

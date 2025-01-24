@@ -1,12 +1,10 @@
 package scala.xml
 package binders
 
-import com.raquo.laminar.api.L.a
-
 import scala.quoted.*
-import scala.xml.MacorsMessage.AttrType
-import scala.xml.{MacrosPosition, NamespaceBinding}
+import scala.xml.MacorsMessage.{????, AttrType}
 import scala.xml.udf.UserDefinedAttributeHandler
+import scala.xml.{MacrosPosition, NamespaceBinding}
 
 object UdfHandlers {
 
@@ -19,53 +17,53 @@ object UdfHandlers {
 
     val name = prefix.map(_ + ":").getOrElse("") + attrKey
 
+    def summonMacrosDefFrom(base: TypeRepr, keyType: TypeRepr, valueType: TypeRepr): Option[UdfHandlersMacros[?, ?]] = {
+      val handleType = AppliedType(base, List(keyType, valueType)).asType
+      Implicits.search(TypeRepr.of(using handleType)) match {
+        case iss: ImplicitSearchSuccess =>
+          handleType match {
+            case '[UserDefinedAttributeHandler[a, b]] =>
+              given attrType: AttrType =
+                AttrType(s"${iss.tree.asExpr.show}:<${name}>]")
+              val handlerExpr          = iss.tree.asExpr.asInstanceOf[Expr[UserDefinedAttributeHandler[a, b]]]
+              Some(UdfHandlersMacros[a, b](handlerExpr))
+          }
+        case isf: ImplicitSearchFailure => None
+      }
+    }
+
     for
-      hType     <- TypeRepr.of[UserDefinedAttributeHandler[?, ?]] match {
-                     case AppliedType(tpe, _) => Some(tpe)
-                     case _                   => None
-                   }
-      keyType    = ConstantType(StringConstant(name))
-      handleType = AppliedType(hType, List(keyType, TypeRepr.of(using tpe))).asType
-      impl      <- Implicits.search(TypeRepr.of(using handleType)) match {
-                     case iss: ImplicitSearchSuccess => Some(iss.tree.asExpr)
-                     case isf: ImplicitSearchFailure => None
-                   }
-      macros    <- handleType match {
-                     case '[UserDefinedAttributeHandler[a, b]] =>
-                       given attrType: AttrType =
-                         AttrType(s"UserDefinedAttribute:<${name}>")
-                       val handlerExpr          = impl.asInstanceOf[Expr[UserDefinedAttributeHandler[a, b]]]
-                       val hdlMacros            = UdfHandlersMacros[a, b](handlerExpr)
-                       Some((attrKey, hdlMacros, Seq(hdlMacros.supportedTypesMessage)))
-                     case _                                    => None
-                   }
-    yield macros
+      hType  <- TypeRepr.of[UserDefinedAttributeHandler[?, ?]] match {
+                  case AppliedType(tpe, _) => Some(tpe)
+                  case _                   => None
+                }
+      keyType = ConstantType(StringConstant(name))
+      macros <- summonMacrosDefFrom(hType, keyType, TypeRepr.of(using tpe))
+                  .orElse {
+                    summonMacrosDefFrom(hType, keyType, TypeBounds.empty)
+                  }
+    yield (attrKey, macros, Seq(macros.supportedTypesMessage))
   }
 
-  class UdfHandlersMacros[PropName <: String, DataType](
+  class UdfHandlersMacros[PropName, DataType](
     handler: Expr[UserDefinedAttributeHandler[PropName, DataType]],
   )(using
     quotes: Quotes,
     nameTpe: Type[PropName],
     rTpe: Type[DataType],
-    attrTpe: AttrType,
+    val attrTpe: AttrType,
   ) extends AttrMacrosDef[DataType] {
     import quotes.*
     import quotes.reflect.*
+
+    override def supportConst: Boolean = false
 
     override protected def withConstImpl[T: Type](
       namespace: Expr[NamespaceBinding => Option[String]],
       prefix: Option[String],
       attrKey: String,
       constStr: String)(using MacrosPosition): Expr[MetatDataBinder] = {
-      '{ (binding: NamespaceBinding, element: ReactiveElementBase) =>
-        {
-          val uri  = ${ namespace }.apply(binding)
-          val hdlr = ${ handler }
-          val data = hdlr.encode(${ Expr(constStr) })
-          hdlr.withValue(uri, ${ Expr(prefix) }, ${ Expr(attrKey) }, data, element)
-        }
-      }
+      ????
     }
 
     override protected def withExprImpl[T: Type](

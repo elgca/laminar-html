@@ -49,9 +49,9 @@ object MacorsMessage {
     attrType: AttrType,
   ): (String, String) = {
     if isChinese then {
-      s"""[${attrType}]支持的数据类型:""" -> s"""${typeExplain[Except]}""".stripMargin
+      s"""[${attrType}]\n支持的数据类型:""" -> s"""${typeExplain[Except]}""".stripMargin
     } else {
-      s"""[${attrType}]Supported data types:""" -> s"""${typeExplain[Except]}""".stripMargin
+      s"""[${attrType}]\nSupported data types:""" -> s"""${typeExplain[Except]}""".stripMargin
     }
   }
 
@@ -180,7 +180,7 @@ object MacorsMessage {
     attrType: AttrType,
   ): Nothing = {
     import quotes.reflect.*
-    report.errorAndAbort(s"[${attrType}]" + msg + s"\n${position}")
+    report.errorAndAbort(s"[${attrType}]\n" + msg + s"\n${position}")
   }
 
   def logInfo(msg: String)(using quotes: Quotes, position: MacrosPosition): Unit = {
