@@ -34,7 +34,7 @@ val test3 = {
   L.contentEditable := true
 }
 
-val testVar = CompileCheck {
+val testVar = {
   val value     = Var("0")
   val clickFunc = Var(() => println("click"))
   val attr      = true
@@ -56,7 +56,8 @@ val testVar = CompileCheck {
   </button>
 }
 
-val svgHtml = {
+val svgHtml = CompileCheck {
+  //
   val classDef  = Option("bi bi-0-circle-fill")
   val classDef2 = Option("bi bi-0-circle-fill")
   <div>
