@@ -22,7 +22,7 @@ lazy val root = project
     Compile / fullLinkJS / scalaJSLinkerOutputDirectory := target.value / "scalajs-modules",
     libraryDependencies ++= Seq(
       "org.scala-js"    %%% "scalajs-dom"  % "2.8.0",
-      "io.github.elgca" %%% "laminar-html" % "0.2.1",
+      "io.github.elgca" %%% "laminar-html" % "0.3.0",
     ),
   )
 
