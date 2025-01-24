@@ -159,3 +159,18 @@ given UserDefinedAttributeHandler["ggccf", String] with
 ```
 
 ![udattr.png](images/udattr.png)
+
+
+# config
+
+config can be added via build.sbt: 
+`System.setProperty("show_type_hints", "true")`
+
+- show_type_hints
+  - default true
+  - display a type hints,it is provided by the `report.info`
+- strict_event_function
+  - default true
+  - Strict event function type validation
+  - For example: onclick is not acceptable function like `(dom.FetchEvent) => Unit`
+    because `dom.FetchEvent` can't be seen as `dom.MouseEvent`

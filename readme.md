@@ -135,3 +135,15 @@ given UserDefinedAttributeHandler["ggccf", String] with
 ```
 
 ![udattr.png](images/udattr.png)
+
+# 可选编译配置
+
+编译配置可以通过sbt中添加`System.setProperty("show_type_hints", "true")`设置
+
+- show_type_hints
+  - default true
+  - 是否显示类型提示,由report.info提供
+- strict_event_function 
+  - default true
+  - 启用严格函数校验
+  - 例如:onclick不能接受类似`(dom.FetchEvent) => Unit`,因为`dom.FetchEvent`无法被视作`dom.MouseEvent`

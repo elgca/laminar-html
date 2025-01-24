@@ -1,15 +1,9 @@
 package scala.xml
 
-import java.util.Locale
 import scala.annotation.tailrec
 import scala.quoted.{Expr, Quotes, Type}
 
 object MacorsMessage {
-
-  val isChinese =
-    Seq(Locale.CHINESE, Locale.CHINA, Locale.SIMPLIFIED_CHINESE, Locale.TRADITIONAL_CHINESE).contains(Locale.getDefault)
-
-  val ShowTypeHints = System.getProperty("show_type_hints") != "false"
 
   def ????(using
     quotes: Quotes,

@@ -1,6 +1,6 @@
 package example
 
-import com.raquo.laminar.api.L.Element
+import com.raquo.laminar.api.L.text
 
 import scala.xml.Elem
 

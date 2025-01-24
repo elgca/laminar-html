@@ -46,8 +46,8 @@ object Events {
 
     override def checkType[T: Type]: Boolean = {
       import quotes.reflect.*
-//      println(s"checkType====> ${TypeRepr.of[T] <:< TypeRepr.of[ListenerFuncTypes[Ev]]}")
-//      TypeRepr.of[T] <:< TypeRepr.of[ListenerFuncTypes[Ev]] &&
+
+      (!StrictEventsFunction || TypeRepr.of[T] <:< TypeRepr.of[ListenerFuncTypes[Ev]]) &&
       conversion[T].isDefined
     }
 
