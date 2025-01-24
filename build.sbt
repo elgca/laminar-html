@@ -9,6 +9,7 @@ val commonScalacOptions = Seq(
   "-Yexplicit-nulls",
   "-rewrite",
   "-source:3.7",
+  "-Wnonunit-statement", // 强制不能为空
 )
 
 lazy val jsSettings = Seq(
@@ -61,6 +62,6 @@ lazy val `laminar-html` = project
 
 // 显示类型提示
 val _ = {
-  System.setProperty("show_type_hints", "true")
-  System.setProperty("strict_event_function", "true")
+  System.setProperty("show_type_hints", "false")
+  System.setProperty("strict_event_function", "false")
 }

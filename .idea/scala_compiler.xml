@@ -20,7 +20,7 @@
         <parameter value="-source:3.7" />
       </parameters>
     </profile>
-    <profile name="sbt 4" modules="root.laminar-html~1.main,root.laminar-html~1.test">
+    <profile name="sbt 3" modules="root.laminar-html~1.main,root.laminar-html~1.test">
       <option name="implicitConversions" value="true" />
       <option name="deprecationWarnings" value="true" />
       <option name="featureWarnings" value="true" />
@@ -33,6 +33,7 @@
         <parameter value="-Yexplicit-nulls" />
         <parameter value="-rewrite" />
         <parameter value="-source:3.7" />
+        <parameter value="-Wnonunit-statement" />
       </parameters>
     </profile>
   </component>

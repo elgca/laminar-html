@@ -100,7 +100,7 @@ object EventsApi {
       )
     }
 
-    val _ = ReactiveElement.bindSubscriptionUnsafe(element)(subscribe)
+    ReactiveElement.bindSubscriptionUnsafe(element)(subscribe)
   }
 
   def addEventListener[T](
@@ -108,7 +108,7 @@ object EventsApi {
     listener: Source[T],
     conversion: ToJsListener[T],
   ): MetatDataBinder = (ns, element) => {
-    val _ = ReactiveElement.bindSubscriptionUnsafe(element) { c =>
+    ReactiveElement.bindSubscriptionUnsafe(element) { c =>
       var before: Option[EventListener] = None
       def clearBefore()                 = before match {
         case Some(beforeListener) =>
@@ -117,7 +117,7 @@ object EventsApi {
         case None                 =>
       }
 
-      listener.toObservable.foreach { nextValue =>
+      val _ = listener.toObservable.foreach { nextValue =>
         val listener = conversion.apply(nextValue)
         clearBefore()
         element.ref.addEventListener(name, listener.callback, listener.options)

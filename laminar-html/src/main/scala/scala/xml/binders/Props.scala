@@ -113,7 +113,7 @@ object Props {
       }
     }
 
-    def boolProp(name: String)(using MacrosPosition) = value.addOne {
+    def boolProp(name: String)(using MacrosPosition): Unit = value.addOne {
       (
         name,
         propName(name),
@@ -121,7 +121,7 @@ object Props {
       )
     }
 
-    def doubleProp(name: String)(using MacrosPosition) = value.addOne {
+    def doubleProp(name: String)(using MacrosPosition): Unit = value.addOne {
       (
         name,
         propName(name),
@@ -129,7 +129,7 @@ object Props {
       )
     }
 
-    def intProp(name: String)(using MacrosPosition) = value.addOne {
+    def intProp(name: String)(using MacrosPosition): Unit = value.addOne {
       (
         name,
         propName(name),
@@ -137,7 +137,7 @@ object Props {
       )
     }
 
-    def stringProp(name: String)(using MacrosPosition) = value.addOne {
+    def stringProp(name: String)(using MacrosPosition): Unit = value.addOne {
       (
         name,
         propName(name),

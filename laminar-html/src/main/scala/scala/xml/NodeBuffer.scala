@@ -17,40 +17,34 @@ class NodeBuffer extends Seq[Node] {
 
   import NodeBuffer.{*, given}
 
-  def &+(component: Node): NodeBuffer = {
+  inline def &+(component: Node): Unit = {
     underlying.addOne(component)
-    this
   }
 
-  def &+[Component: AcceptableNode](component: Component): NodeBuffer = {
-    underlying.addOne(summon[AcceptableNode[Component]].asNode(component))
-    this
+  inline def &+[Component: AcceptableNode](component: Component): Unit = {
+    &+(summon[AcceptableNode[Component]].asNode(component))
   }
 
-  def &+[CC[x] <: IterableOnce[x], Component: AcceptableNode](components: CC[Component]): NodeBuffer = {
+  inline def &+[CC[x] <: IterableOnce[x], Component: AcceptableNode](components: CC[Component]): Unit = {
     components.iterator.foreach(c => {
-      underlying.addOne(summon[AcceptableNode[Component]].asNode(c))
+      &+(summon[AcceptableNode[Component]].asNode(c))
     })
-    this
   }
 
   // 支持 Source[xxx]
-  def &+[Component: RenderableNode](source: Source[Component]): NodeBuffer = {
+  inline def &+[Component: RenderableNode](source: Source[Component]): Unit = {
     &+(L.child <-- source)
-    this
   }
 
-  def &+[Component <: ChildNodeBase](source: Source[Component]): NodeBuffer = {
+  inline def &+[Component <: ChildNodeBase](source: Source[Component]): Unit = {
     &+(L.child <-- source)
-    this
   }
 
-  def &+[Component: RenderableNode](source: js.Promise[Component]): NodeBuffer = {
+  inline def &+[Component: RenderableNode](source: js.Promise[Component]): Unit = {
     val src = Signal
       .fromJsPromise(source)
       .map(opt => opt.map(c => summon[LaminarRenderableNode[Component]].asNode(c)))
     &+(L.child.maybe <-- src)
-    this
   }
 
   // 为了解决string的问题, string被视作Comparable[_]会导致进入该分支,这里强制限定类型范围,但是应该进入
@@ -63,31 +57,28 @@ class NodeBuffer extends Seq[Node] {
       ew.JsVector[A] | //
       LaminarSeq[A]
 
-  def &+[Collection[x] <: LaminarRenderableSeqType[x]: LaminarRenderableSeq, Component: RenderableNode](
-    source: Source[Collection[Component]]): NodeBuffer = {
+  inline def &+[Collection[x] <: LaminarRenderableSeqType[x]: LaminarRenderableSeq, Component: RenderableNode](
+    source: Source[Collection[Component]]): Unit = {
     &+(L.children <-- source)
-    this
   }
 
-  def &+[Collection[x] <: LaminarRenderableSeqType[x]: LaminarRenderableSeq](
-    source: Source[Collection[ChildNodeBase]]): NodeBuffer = {
+  inline def &+[Collection[x] <: LaminarRenderableSeqType[x]: LaminarRenderableSeq](
+    source: Source[Collection[ChildNodeBase]]): Unit = {
     &+(L.children <-- source)
-    this
   }
 
   @annotation.targetName("sourceOption")
-  def &+[Component: RenderableNode](source: Source[Option[Component]]): NodeBuffer = {
+  inline def &+[Component: RenderableNode](source: Source[Option[Component]]): Unit = {
     &+(L.child.maybe <-- source)
-    this
   }
 
   // 清理掉Text为空的节点或者进行trim操作
   @annotation.targetName("trimText")
-  inline def &+(inline text: Text): NodeBuffer = { MacrosTool.trimOrDropTextNode(text, this) }
+  inline def &+(inline text: Text): Unit = { MacrosTool.trimOrDropTextNode(text, this) }
 
   // 忽略空节点, 本来想用inline 直接忽略相关代码
   // 但是从逻辑上, 这样是被允许的 `<div> {println("init this div")} </div>`
-  def &+(o: scala.Null | Unit): NodeBuffer = { this }
+  inline def &+(inline o: scala.Null | Unit): Unit = { o }
 }
 
 object NodeBuffer {

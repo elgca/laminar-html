@@ -109,7 +109,7 @@ object AttrMacrosDef {
           Attrs.unknownAttribute(prefix, attrKey),
           Events.unknownEvents(attrKey),
         )
-        anyMatch.iterator
+        anyMatch
           .headOrMatch(_.checkType(using tpe))
           .map(m => (attrKey, m, anyMatch.map(_.supportedTypesMessage)))
       }

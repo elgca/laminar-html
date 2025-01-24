@@ -34,18 +34,25 @@ val test3 = {
   L.contentEditable := true
 }
 
-val testVar = {
+val testVar = CompileCheck {
   val value     = Var("0")
   val clickFunc = Var(() => println("click"))
-  L.className := "hwiden"
-  val attr = true
+  val attr      = true
   <button
     value={value}
     guo ="???"
     minLength ="1"
     width="121"
     >
-  {L.onClick --> println("click-------->")}
+    hello ----------- world
+    {L.onClick --> println("click-------->")}
+    {
+      Seq(
+        "==>a",
+        "b",
+        <div/>,
+      )
+    }
   </button>
 }
 

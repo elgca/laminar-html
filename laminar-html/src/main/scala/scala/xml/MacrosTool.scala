@@ -15,20 +15,20 @@ object MacrosTool {
     * 如果需要换行文本,使用嵌入对象方式例如: {{{ <code>{""" a x ... xxx
     * """"}</code> }}}
     */
-  inline def trimOrDropTextNode(inline node: Text, underlying: NodeBuffer): NodeBuffer = {
+  inline def trimOrDropTextNode(inline node: Text, underlying: NodeBuffer): Unit = {
     ${ trimOrDropTextNodeMacros('node, 'underlying) }
   }
 
   private def trimOrDropTextNodeMacros(
     nodeExpr: Expr[Text],
     underlying: Expr[NodeBuffer],
-  )(using quotes: Quotes): Expr[NodeBuffer] = {
+  )(using quotes: Quotes): Expr[Unit] = {
     import quoted.*
     constTextValue(nodeExpr) match
       case Some(value) =>
         // 检查是否是Text节点，并且有一个字符串字面量作为参数
         val trimmedValue = value.trim
-        if trimmedValue.isEmpty then underlying // 空Text不添加
+        if trimmedValue.isEmpty then '{ () } // 空Text不添加
         else '{ ${ underlying }.&+(${ Expr(trimmedValue) }) }
       case None        =>
         '{ ${ underlying }.&+(${ nodeExpr }.data) }

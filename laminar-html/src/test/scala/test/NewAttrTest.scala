@@ -8,7 +8,7 @@ object NewAttrTest {
 
   def test = CompileCheck {
     val func = Var(() => println("Hello world"))
-    div(<button onclick={func} />)
+//    val _    = div(<button onclick={func} />)
     <div>{
       button(onClick --> {
         println("clicked")

@@ -108,7 +108,9 @@ object Events {
     @nowarn
     inline given tpeProvider[Ev]: (Quotes => Type[Ev]) = (q: Quotes) => Type.of[Ev](using q)
 
-    inline def eventProp[Ev <: dom.Event](name: String)(using tpe: Quotes => Type[Ev])(using pos: MacrosPosition) = {
+    inline def eventProp[Ev <: dom.Event](
+      name: String,
+    )(using tpe: Quotes => Type[Ev])(using pos: MacrosPosition): Unit = {
       val evType = MacorsMessage.getTypeString[Ev]
       value.addOne {
         (
