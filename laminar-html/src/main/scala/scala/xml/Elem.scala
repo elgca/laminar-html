@@ -7,7 +7,7 @@ class Elem(
   val reactiveElement: ReactiveElementBase,
   //  override val tag: ElemTag,
   //  override val ref: dom.Element,
-) derives CanEqual {
+) extends Node derives CanEqual {
   def this(
     tagName: String,
     prefix: String | scala.Null,
@@ -29,6 +29,9 @@ class Elem(
     child.foreach(child => child.apply(reactiveElement))
   }
 
+  // append to parent
+  override def apply(element: ReactiveElementBase): Unit =
+    this.reactiveElement.apply(element)
 }
 
 object Elem {

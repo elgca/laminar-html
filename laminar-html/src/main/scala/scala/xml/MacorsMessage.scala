@@ -180,12 +180,20 @@ object MacorsMessage {
     attrType: AttrType,
   ): Nothing = {
     import quotes.reflect.*
-    report.errorAndAbort(s"[${attrType}]\n" + msg + s"\n${position}")
+    val pos =
+      if position.pos.isEmpty then Position.ofMacroExpansion
+      else Position(Position.ofMacroExpansion.sourceFile, position.pos.get._1, position.pos.get._2)
+    report.errorAndAbort(s"[${attrType}]\n" + msg + s"\n${position}", pos)
   }
 
   def logInfo(msg: String)(using quotes: Quotes, position: MacrosPosition): Unit = {
     import quotes.reflect.*
-    if ShowTypeHints then report.info(msg)
+    if ShowTypeHints then {
+      val pos =
+        if position.pos.isEmpty then Position.ofMacroExpansion
+        else Position(Position.ofMacroExpansion.sourceFile, position.pos.get._1, position.pos.get._2)
+      report.info(msg, pos)
+    }
   }
 
   case class AttrType(str: String) extends AnyVal {

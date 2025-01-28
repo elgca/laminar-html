@@ -173,3 +173,28 @@ config can be added via build.sbt:
   - Strict event function type validation
   - For example: onclick is not acceptable function like `(dom.FetchEvent) => Unit`
     because `dom.FetchEvent` can't be seen as `dom.MouseEvent`
+
+# xml interpolator
+
+base on https://github.com/lampepfl/xml-interpolator 的修改
+
+```scala
+        val cnt          = Var(0)
+        val onclick      = () => cnt.update(_ + 1)
+        val reset        = () => cnt.update(_ => 0)
+        //        val c = summon[AcceptableNode["hello"]]
+        //        println(c)
+        //        val _ = CompileCheck("========>" + c)
+        val cntttttttttt = Var(0)
+        html"""
+          <div>
+            <button
+              onclick=${onclick}
+            >
+              click me: ${cnt}
+            </button>
+            <button onclick=${reset} />
+            <img src="test/uri"  alt="image">
+          </div>
+           """
+```

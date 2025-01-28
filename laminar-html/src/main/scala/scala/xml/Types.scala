@@ -1,12 +1,9 @@
 package scala.xml
 
-import com.raquo.laminar.keys.Key
 import com.raquo.laminar.lifecycle
 import com.raquo.laminar.modifiers.Modifier
-import com.raquo.laminar.nodes.{ChildNode, ReactiveElement}
-import com.raquo.laminar.tags.Tag
+import com.raquo.laminar.nodes.ChildNode
 import org.scalajs.dom
-import org.scalajs.dom.Element
 
 type LModBase = Modifier.Base
 type LAnyMod  = Modifier[? <: ReactiveElement.Base]

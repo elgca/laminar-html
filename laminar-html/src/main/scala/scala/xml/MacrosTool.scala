@@ -157,11 +157,14 @@ object MacrosTool {
     '{ MetaData.EmptyBinder }
   }
 
-  def attributeMacro[T: Type](
+  def attributeMacro[T](
     namespaceURI: Option[String],
     prefix: Option[String],
     attrKey: String,
     expr: Expr[T],
+  )(using
+    tpe: Type[T],
+    position: MacrosPosition,
   )(using quotes: Quotes): Expr[MetatDataBinder] = {
     import quotes.*
     import quotes.reflect.*
@@ -246,11 +249,15 @@ object MacrosTool {
 
   // ------ Rx变量解析 ---------
 
-  def dattributeRxMacro[V: Type, CC <: Source[V]: Type](
+  def dattributeRxMacro[V, CC <: Source[V]](
     namespaceURI: Option[String],
     prefix: Option[String],
     key: String,
     sourceValue: Expr[CC],
+  )(using
+    vTpe: Type[V],
+    tpe: Type[CC],
+    position: MacrosPosition,
   )(using quotes: Quotes): Expr[MetatDataBinder] = {
     val namespace = namespaceFunction(namespaceURI, prefix)
     (prefix, key, Type.of[V]) match {

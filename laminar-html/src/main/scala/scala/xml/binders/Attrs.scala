@@ -32,7 +32,7 @@ object Attrs {
     prefix: Option[String],
     name: String,
   )(using quotes: Quotes): HtmlAttrMacros[?] = {
-    import quotes.reflect._
+    import quotes.reflect.*
     given attrType: AttrType = AttrType(s"Unknown attribute :<${prefix.map(_ + ":").getOrElse("")}${name}>")
     HtmlAttrMacros.StringAttr
   }

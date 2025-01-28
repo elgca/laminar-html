@@ -4,7 +4,7 @@ package binders
 import scala.quoted.*
 import scala.xml.MacorsMessage.AttrType
 
-trait AttrMacrosDef[R](using Quotes, Type[R], AttrType) {
+trait AttrMacrosDef[R](using quotes: Quotes, tpe: Type[R], attrType: AttrType) {
 
   def expectType: Type[R] = Type.of[R]
 
@@ -94,7 +94,7 @@ object AttrMacrosDef {
 
   def unapply[T](
     tuple: (Option[String], String, Type[T]),
-  )(using quotes: Quotes): Option[(String, AttrMacrosDef[?])] = {
+  )(using quotes: Quotes, position: MacrosPosition): Option[(String, AttrMacrosDef[?])] = {
     val (prefix, attrKey, tpe) = tuple
 
     LaminarMod

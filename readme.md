@@ -146,3 +146,32 @@ given UserDefinedAttributeHandler["ggccf", String] with
   - default true
   - 启用严格函数校验
   - 例如:onclick不能接受类似`(dom.FetchEvent) => Unit`,因为`dom.FetchEvent`无法被视作`dom.MouseEvent`
+
+# xml interpolator
+
+`xhtml`中的字符串插值, scala3 计划移除 xml字面量,
+如果你开启了`--source future`则会禁止xml字面量
+
+这是一份来自 https://github.com/lampepfl/xml-interpolator 的修改
+
+```scala
+        val cnt          = Var(0)
+        val onclick      = () => cnt.update(_ + 1)
+        val reset        = () => cnt.update(_ => 0)
+        //        val c = summon[AcceptableNode["hello"]]
+        //        println(c)
+        //        val _ = CompileCheck("========>" + c)
+        val cntttttttttt = Var(0)
+        html"""
+          <div>
+            <button
+              onclick=${onclick}
+            >
+              click me: ${cnt}
+            </button>
+            <button onclick=${reset} />
+            <img src="test/uri"  alt="image">
+          </div>
+           """
+```
+

@@ -2,6 +2,7 @@ package scala.xml
 
 import com.raquo.airstream.core.Signal
 import com.raquo.ew
+import com.raquo.laminar.nodes.ReactiveElement.Base
 
 import scala.annotation.{implicitNotFound, nowarn}
 import scala.collection.immutable.Seq
@@ -15,70 +16,19 @@ class NodeBuffer extends Seq[Node] {
   def length: Int                                   = underlying.length
   override protected def className: String          = "NodeBuffer"
 
-  import NodeBuffer.{*, given}
+  import NodeBuffer.*
 
-  inline def &+(component: Node): Unit = {
+  def &+(component: Node): Unit = {
     underlying.addOne(component)
   }
 
-  inline def &+[Component: AcceptableNode](component: Component): Unit = {
+  inline def &+[Component: AcceptableNode](inline component: Component): Unit = {
     &+(summon[AcceptableNode[Component]].asNode(component))
-  }
-
-  inline def &+[CC[x] <: IterableOnce[x], Component: AcceptableNode](components: CC[Component]): Unit = {
-    components.iterator.foreach(c => {
-      &+(summon[AcceptableNode[Component]].asNode(c))
-    })
-  }
-
-  // 支持 Source[xxx]
-  inline def &+[Component: RenderableNode](source: Source[Component]): Unit = {
-    &+(L.child <-- source)
-  }
-
-  inline def &+[Component <: ChildNodeBase](source: Source[Component]): Unit = {
-    &+(L.child <-- source)
-  }
-
-  inline def &+[Component: RenderableNode](source: js.Promise[Component]): Unit = {
-    val src = Signal
-      .fromJsPromise(source)
-      .map(opt => opt.map(c => summon[LaminarRenderableNode[Component]].asNode(c)))
-    &+(L.child.maybe <-- src)
-  }
-
-  // 为了解决string的问题, string被视作Comparable[_]会导致进入该分支,这里强制限定类型范围,但是应该进入
-  // com.raquo.laminar.modifiers.RenderableSeq默认的所有类型都在这里了
-  type LaminarRenderableSeqType[A] =
-    collection.Seq[A] | //
-      scala.Array[A] | //
-      js.Array[A] | //
-      ew.JsArray[A] | //
-      ew.JsVector[A] | //
-      LaminarSeq[A]
-
-  inline def &+[Collection[x] <: LaminarRenderableSeqType[x]: LaminarRenderableSeq, Component: RenderableNode](
-    source: Source[Collection[Component]]): Unit = {
-    &+(L.children <-- source)
-  }
-
-  inline def &+[Collection[x] <: LaminarRenderableSeqType[x]: LaminarRenderableSeq](
-    source: Source[Collection[ChildNodeBase]]): Unit = {
-    &+(L.children <-- source)
-  }
-
-  @annotation.targetName("sourceOption")
-  inline def &+[Component: RenderableNode](source: Source[Option[Component]]): Unit = {
-    &+(L.child.maybe <-- source)
   }
 
   // 清理掉Text为空的节点或者进行trim操作
   @annotation.targetName("trimText")
   inline def &+(inline text: Text): Unit = { MacrosTool.trimOrDropTextNode(text, this) }
-
-  // 忽略空节点, 本来想用inline 直接忽略相关代码
-  // 但是从逻辑上, 这样是被允许的 `<div> {println("init this div")} </div>`
-  inline def &+(inline o: scala.Null | Unit): Unit = { o }
 }
 
 object NodeBuffer {
@@ -147,5 +97,61 @@ object NodeBuffer {
           val nextRes    = res.appended(node)
           toNodeVectors[metsTail](p, i + 1, nextRes)
     }
+
+    given seqNodes[CC[x] <: IterableOnce[x], Component: AcceptableNode]: AcceptableNode[CC[Component]] =
+      (components: CC[Component]) => {
+        Node.GroupNode(components.iterator.to(Iterable).map(c => summon[AcceptableNode[Component]].asNode(c)))
+      }
+
+    // 支持 Source[xxx]
+    given sourceNode[SS[x] <: Source[x], Component: RenderableNode]: AcceptableNode[SS[Component]] =
+      (source: SS[Component]) => {
+        Node.mod(L.child <-- source)
+      }
+
+    given sourceChild[SS[x] <: Source[x], Component <: ChildNodeBase]: AcceptableNode[SS[Component]] =
+      (source: SS[Component]) => {
+        Node.mod(L.child <-- source)
+      }
+
+    given promiseNode[Component: RenderableNode]: AcceptableNode[js.Promise[Component]] with
+
+      def asNode(value: js.Promise[Component]): Node = {
+        val src = Signal
+          .fromJsPromise(value)
+          .map(opt => opt.map(c => summon[LaminarRenderableNode[Component]].asNode(c)))
+        Node.mod(L.child.maybe <-- src)
+      }
+
+    // 为了解决string的问题, string被视作Comparable[_]会导致进入该分支,这里强制限定类型范围,但是应该进入
+    // com.raquo.laminar.modifiers.RenderableSeq默认的所有类型都在这里了
+    type LaminarRenderableSeqType[A] =
+      collection.Seq[A] | //
+        scala.Array[A] | //
+        js.Array[A] | //
+        ew.JsArray[A] | //
+        ew.JsVector[A] | //
+        LaminarSeq[A]
+
+    given laminarRenderableSeq[
+      SS[x] <: Source[x],
+      Collection[x] <: LaminarRenderableSeqType[x]: LaminarRenderableSeq,
+      Component: RenderableNode,
+    ]: AcceptableNode[SS[Collection[Component]]] = (source: SS[Collection[Component]]) => {
+      Node.mod(L.children <-- source)
+    }
+
+    given sourceOptionNode[SS[x] <: Source[x], Component: RenderableNode]: AcceptableNode[SS[Option[Component]]] =
+      (source: SS[Option[Component]]) => {
+        Node.mod(L.child.maybe <-- source)
+      }
+
+    private def doNothing[C](): AcceptableNode[C] = (source: C) => {
+      Node.mod(new LModBase {
+        override def apply(element: Base): Unit = {}
+      })
+    }
+    given nullNode: AcceptableNode[scala.Null]    = doNothing()
+    given unitNode: AcceptableNode[scala.Unit]    = doNothing()
   }
 }

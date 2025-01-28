@@ -1,7 +1,9 @@
 package scala.xml
 
 /** XML node for text */
-class Text(val data: String) extends AnyVal
+class Text(val data: String) extends AnyVal{
+  override def toString: String = data
+}
 
 object Text {
   def apply(data: String): Text = new Text(data)

@@ -10,6 +10,10 @@ class NamespaceBinding(
     if prefix == this.prefix then uri.toOption else next.toOption.flatMap(_ namespaceURI prefix)
 }
 
+object NamespaceBinding {
+  given topScope:NamespaceBinding = TopScope
+}
+
 case object TopScope extends NamespaceBinding(null, null, null) {
   final val svgNamespaceUri: String   = "http://www.w3.org/2000/svg"
   final val xlinkNamespaceUri: String = "http://www.w3.org/1999/xlink"
