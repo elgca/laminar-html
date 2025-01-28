@@ -176,7 +176,7 @@ config can be added via build.sbt:
 
 # xml interpolator
 
-base on https://github.com/lampepfl/xml-interpolator 的修改
+base on https://github.com/lampepfl/xml-interpolator
 
 ```scala
         val cnt          = Var(0)
